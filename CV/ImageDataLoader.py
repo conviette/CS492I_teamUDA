@@ -5,6 +5,7 @@ import torch.utils.data
 import torchvision.transforms as transforms
 import numpy as np
 import torch
+from random import choice
 
 def default_image_loader(path):
     return Image.open(path).convert('RGB')
@@ -17,8 +18,20 @@ class TransformTwice:
         out2 = self.transform(inp)
         return out1, out2
 
+class TransformRandom:
+    def __init__(self, transform, UDA_Trans):
+        self.base_trans = transform
+        self.transformList = UDA_Trans
+    def __call__(self, inp):
+        base_img = self.base_trans(inp)
+        uda_img = choice(self.transformList)(base_img)
+        return base_img, uda_img
+
 class SimpleImageLoader(torch.utils.data.Dataset):
-    def __init__(self, rootdir, split, ids=None, transform=None, loader=default_image_loader):
+    def __init__(self, rootdir, split, ids=None, transform=None, loader=default_image_loader, UDA=False, UDA_Trans = []):
+
+        assert(not(UDA) or len(UDA_Trans)>0)
+
         if split == 'test':
             self.impath = os.path.join(rootdir, 'test_data')
             meta_file = os.path.join(self.impath, 'test_meta.txt')
@@ -50,6 +63,8 @@ class SimpleImageLoader(torch.utils.data.Dataset):
         self.split = split
         self.imnames = imnames
         self.imclasses = imclasses
+        self.UDA = UDA
+        self.TransformRandom = TransformRandom(transform, UDA_Trans)
 
     def __getitem__(self, index):
         filename = self.imnames[index]
@@ -65,7 +80,10 @@ class SimpleImageLoader(torch.utils.data.Dataset):
             label = self.imclasses[index]
             return img, label
         else:
-            img1, img2 = self.TransformTwice(img)
+            if self.UDA:
+                img1, img2 = self.TransformRandom(img)
+            else:
+                img1, img2 = self.TransformTwice(img)
             return img1, img2
 
     def __len__(self):
