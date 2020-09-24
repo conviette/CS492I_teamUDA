@@ -361,7 +361,7 @@ def main():
         best_acc = -1
         for epoch in range(opts.start_epoch, opts.epochs + 1):
             # print('start training')
-            loss, loss_x, loss_u, avg_top1, avg_top5 = train(opts, train_loader, unlabel_loader, model, train_criterion, optimizer, ema_optimizer, epoch, use_gpu)
+            loss, loss_x, loss_u, loss_uda, avg_top1, avg_top5 = train(opts, train_loader, unlabel_loader, model, train_criterion, optimizer, ema_optimizer, epoch, use_gpu)
             print('epoch {:03d}/{:03d} finished, loss: {:.3f}, loss_x: {:.3f}, loss_un: {:.3f},  loss_uda: {:.3f},  avg_top1: {:.3f}%, avg_top5: {:.3f}%'.format(epoch, opts.epochs, loss, loss_x, loss_u, loss_uda, avg_top1, avg_top5))
             # scheduler.step()
 
@@ -509,7 +509,7 @@ def train(opts, train_loader, unlabel_loader, model, criterion, optimizer, ema_o
                 embed_x, pred_x1 = model(inputs_x)
 
             if IS_ON_NSML and global_step % opts.log_interval == 0:
-                nsml.report(step=global_step, loss=losses_curr.avg, loss_x=losses_x_curr.avg, loss_un=losses_un_curr.avg, loss_da = losses_uda_curr)
+                nsml.report(step=global_step, loss=losses_curr.avg, loss_x=losses_x_curr.avg, loss_un=losses_un_curr.avg, loss_uda = losses_uda_curr)
                 losses_curr.reset()
                 losses_x_curr.reset()
                 losses_un_curr.reset()
