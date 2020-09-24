@@ -74,11 +74,14 @@ def linear_rampup(current, rampup_length):
         return float(current)
 
 class SemiLoss(object):
+    def __init__(self):
+        self.celoss = nn.CrossEntropyLoss()
+
     def __call__(self, outputs_x, targets_x, outputs_u, targets_u, outputs_uda, targets_uda, epoch, final_epoch):
         probs_u = torch.softmax(outputs_u, dim=1)
         Lx = -torch.mean(torch.sum(F.log_softmax(outputs_x, dim=1) * targets_x, dim=1))
         Lu = torch.mean((probs_u - targets_u)**2)
-        Luda =
+        Luda = self.celoss(outputs_uda, targets_uda)
         return Lx, Lu, Luda, opts.lambda_u * linear_rampup(epoch, final_epoch)
 
 class WeightEMA(object):
