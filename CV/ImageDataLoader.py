@@ -6,6 +6,7 @@ import torchvision.transforms as transforms
 import numpy as np
 import torch
 from random import choice
+from randaugment import RandAugment
 
 def default_image_loader(path):
     return Image.open(path).convert('RGB')
@@ -21,17 +22,16 @@ class TransformTwice:
 class TransformRandom:
     def __init__(self, transform, UDA_Trans):
         self.base_trans = transform
-        self.transformList = UDA_Trans
+        self.randaug = UDA_Trans
     def __call__(self, inp):
         base_img = self.base_trans(inp)
-        uda_img = choice(self.transformList)(base_img)
+        uda_img = self.randaug(inp)
         return base_img, uda_img
 
 class SimpleImageLoader(torch.utils.data.Dataset):
-    def __init__(self, rootdir, split, ids=None, transform=None, loader=default_image_loader, UDA=False, UDA_Trans = []):
+    def __init__(self, rootdir, split, ids=None, transform=None, loader=default_image_loader, UDA=False, UDA_Trans = None):
 
-        assert(not(UDA) or len(UDA_Trans)>0)
-
+        assert (not(UDA) or UDA_Trans != None)
         if split == 'test':
             self.impath = os.path.join(rootdir, 'test_data')
             meta_file = os.path.join(self.impath, 'test_meta.txt')

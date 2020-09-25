@@ -21,6 +21,7 @@ import torch.nn.functional as F
 
 import torchvision
 from torchvision import datasets, models, transforms
+from randaugment import RandAugment
 
 import torch.nn.functional as F
 
@@ -75,7 +76,7 @@ def linear_rampup(current, rampup_length):
 
 class SemiLoss(object):
     def __init__(self):
-        self.celoss = nn.CrossEntropyLoss()
+        self.celoss = nn.KLDivLoss()
 
     def __call__(self, outputs_x, targets_x, outputs_u, targets_u, outputs_uda, targets_uda, epoch, final_epoch):
         probs_u = torch.softmax(outputs_u, dim=1)
@@ -319,7 +320,14 @@ def main():
 
         ###UDA###
 
-        uda_trans_list = []
+        uda_trans_list = transform=transforms.Compose([
+                              transforms.Resize(opts.imResize),
+                              transforms.RandomResizedCrop(opts.imsize),
+                              transforms.RandomHorizontalFlip(),
+                              transforms.RandomVerticalFlip(),
+                              RandAugment(),
+                              transforms.ToTensor(),
+                              transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),])
 
         uda_loader = torch.utils.data.DataLoader(
             SimpleImageLoader(DATASET_PATH, 'unlabel', unl_ids,
@@ -364,7 +372,7 @@ def main():
         best_acc = -1
         for epoch in range(opts.start_epoch, opts.epochs + 1):
             # print('start training')
-            loss, loss_x, loss_u, loss_uda, avg_top1, avg_top5 = train(opts, train_loader, unlabel_loader, model, train_criterion, optimizer, ema_optimizer, epoch, use_gpu)
+            loss, loss_x, loss_u, loss_uda, avg_top1, avg_top5 = train(opts, train_loader, unlabel_loader, uda_loader, model, train_criterion, optimizer, ema_optimizer, epoch, use_gpu)
             print('epoch {:03d}/{:03d} finished, loss: {:.3f}, loss_x: {:.3f}, loss_un: {:.3f},  loss_uda: {:.3f},  avg_top1: {:.3f}%, avg_top5: {:.3f}%'.format(epoch, opts.epochs, loss, loss_x, loss_u, loss_uda, avg_top1, avg_top5))
             # scheduler.step()
 
@@ -385,7 +393,7 @@ def main():
                     torch.save(ema_model.state_dict(), os.path.join('runs', opts.name + '_e{}'.format(epoch)))
 
 
-def train(opts, train_loader, unlabel_loader, model, criterion, optimizer, ema_optimizer, epoch, use_gpu):
+def train(opts, train_loader, unlabel_loader, uda_loader,  model, criterion, optimizer, ema_optimizer, epoch, use_gpu):
     global global_step
 
     losses = AverageMeter()
@@ -453,7 +461,7 @@ def train(opts, train_loader, unlabel_loader, model, criterion, optimizer, ema_o
                 embed_uda2, pred_uda1 = model(inputs_uda1)
                 embed_uda2, pred_uda2 = model(inputs_uda2)
                 pred_u_all = (torch.softmax(pred_u1, dim=1) + torch.softmax(pred_u2, dim=1)) / 2
-                pred_uda1, pred_uda2 = torch.softmax(pred_uda1, dim=1), torch.softmax(pred_uda2, dim=1)
+                pred_uda1, pred_uda2 = F.log_softmax(pred_uda1, dim=1), torch.softmax(pred_uda2, dim=1)
                 pt = pred_u_all**(1/opts.T)
                 targets_u = pt / pt.sum(dim=1, keepdim=True)
                 targets_u = targets_u.detach()
@@ -488,7 +496,7 @@ def train(opts, train_loader, unlabel_loader, model, criterion, optimizer, ema_o
             logits_x = logits[0]
             logits_u = torch.cat(logits[1:], dim=0)
 
-            loss_x, loss_un, loss_uda, weigts_mixing = criterion(logits_x, mixed_target[:batch_size], logits_u, mixed_target[batch_size:], pred_uda1, pred_uda2 epoch+batch_idx/len(train_loader), opts.epochs)
+            loss_x, loss_un, loss_uda, weigts_mixing = criterion(logits_x, mixed_target[:batch_size], logits_u, mixed_target[batch_size:], pred_uda1, pred_uda2, epoch+batch_idx/len(train_loader), opts.epochs)
             loss = loss_x + weigts_mixing * loss_un + loss_uda
 
             losses.update(loss.item(), inputs_x.size(0))
@@ -512,7 +520,7 @@ def train(opts, train_loader, unlabel_loader, model, criterion, optimizer, ema_o
                 embed_x, pred_x1 = model(inputs_x)
 
             if IS_ON_NSML and global_step % opts.log_interval == 0:
-                nsml.report(step=global_step, loss=losses_curr.avg, loss_x=losses_x_curr.avg, loss_un=losses_un_curr.avg, loss_uda = losses_uda_curr)
+                nsml.report(step=global_step, loss=losses_curr.avg, loss_x=losses_x_curr.avg, loss_un=losses_un_curr.avg, loss_uda = losses_uda_curr.avg)
                 losses_curr.reset()
                 losses_x_curr.reset()
                 losses_un_curr.reset()
