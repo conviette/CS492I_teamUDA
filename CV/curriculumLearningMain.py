@@ -30,7 +30,7 @@ from models import Res18, Res50, Dense121, Res18_basic
 import nsml
 from nsml import DATASET_PATH, IS_ON_NSML
 
-from dataInfo import easyIdxList, medIdxList, hardIdxList, getTrData_specific_difficulty
+from dataInfo import easyIdxList, medIdxList, hardIdxList, getTrData_specific_difficulty, pseudoAttatchedFileNMs, pseudoAttatchedLabels, pseudoEasyIdxs, pseudoMedIdxs
 
 NUM_CLASSES = 265
 
@@ -64,7 +64,7 @@ class AverageMeter(object):
         
 def adjust_learning_rate(opts, optimizer, epoch):
     """Sets the learning rate to the initial LR decayed by 10 every 30 epochs"""
-    lr = opts.lr * (0.1 ** (epoch // 30))
+    lr = opts.lr * (0.1 ** (epoch // 60))
     for param_group in optimizer.param_groups:
         param_group['lr'] = lr
         
@@ -201,7 +201,7 @@ parser.add_argument('--steps_per_epoch', type=int, default=30, metavar='N', help
 
 # basic settings
 parser.add_argument('--name',default='Res18baseMM', type=str, help='output model name')
-parser.add_argument('--gpu_ids',default='1', type=str,help='gpu_ids: e.g. 0  0,1,2  0,2')
+parser.add_argument('--gpu_ids',default='0', type=str,help='gpu_ids: e.g. 0  0,1,2  0,2')
 parser.add_argument('--batchsize', default=200, type=int, help='batchsize')
 parser.add_argument('--seed', type=int, default=123, help='random seed')
 
@@ -294,7 +294,7 @@ def main():
 
 
 
-        loaded_easy_trData = SimpleImageLoader(DATASET_PATH, 'train', train_ids,
+        default_trSet = SimpleImageLoader(DATASET_PATH, 'train', train_ids,
                               transform=transforms.Compose([
                                   transforms.Resize(opts.imResize),
                                   transforms.RandomResizedCrop(opts.imsize),
@@ -303,15 +303,15 @@ def main():
                                   transforms.ToTensor(),
                                   transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),]))
 
-        loaded_easy_trData.flush()
-        loaded_easy_trData.setNewData(getTrData_specific_difficulty(easyIdxList))
 
-        easy_train_loader = torch.utils.data.DataLoader(
-            loaded_easy_trData, batch_size=opts.batchsize, shuffle=True, num_workers=0, pin_memory=True, drop_last=True)
+        print ("original training data size:", len(default_trSet.imnames))
+
+        default_training_loader = torch.utils.data.DataLoader(
+            default_trSet, batch_size=opts.batchsize, shuffle=True, num_workers=0, pin_memory=True, drop_last=True)
         print('easy train_loader done')
         
 
-        loaded_med_trData = SimpleImageLoader(DATASET_PATH, 'train', train_ids,
+        pseudo_easy_trData = SimpleImageLoader(DATASET_PATH, 'train', train_ids,
                               transform=transforms.Compose([
                                   transforms.Resize(opts.imResize),
                                   transforms.RandomResizedCrop(opts.imsize),
@@ -320,15 +320,56 @@ def main():
                                   transforms.ToTensor(),
                                   transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),]))
 
-        loaded_med_trData.flush()
-        loaded_med_trData.setNewData(getTrData_specific_difficulty(medIdxList))
+        pseudo_easy_trData.flushData()
+        newNames, newclasses = getTrData_specific_difficulty(pseudoAttatchedFileNMs, pseudoAttatchedLabels, pseudoEasyIdxs)
+        pseudo_easy_trData.setNewData(newNames, newclasses)
+        print ("Pseudo Easy data size:", len(newNames))
 
-        med_train_loader = torch.utils.data.DataLoader(
-            loaded_med_trData, batch_size=opts.batchsize, shuffle=True, num_workers=0, pin_memory=True, drop_last=True)
-        print('med train_loader done')
+        pesudo_easy_training_loader = torch.utils.data.DataLoader(
+            pseudo_easy_trData, batch_size=opts.batchsize, shuffle=True, num_workers=0, pin_memory=True, drop_last=True)
+        print('pseudo_easy_loader done')
+
+        pseudo_med_trData = SimpleImageLoader(DATASET_PATH, 'train', train_ids,
+                                               transform=transforms.Compose([
+                                                   transforms.Resize(opts.imResize),
+                                                   transforms.RandomResizedCrop(opts.imsize),
+                                                   transforms.RandomHorizontalFlip(),
+                                                   transforms.RandomVerticalFlip(),
+                                                   transforms.ToTensor(),
+                                                   transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                                                                        std=[0.229, 0.224, 0.225]), ]))
+
+        pseudo_med_trData.flushData()
+        newNames, newclasses = getTrData_specific_difficulty(pseudoAttatchedFileNMs, pseudoAttatchedLabels,
+                                                             pseudoMedIdxs)
+        pseudo_med_trData.setNewData(newNames, newclasses)
+        print("Pseudo Med data size:", len(newNames))
+
+        pesudo_med_training_loader = torch.utils.data.DataLoader(
+            pseudo_med_trData, batch_size=opts.batchsize, shuffle=True, num_workers=0, pin_memory=True, drop_last=True)
+        print('pseudo_med_loader done')
+
+        pseudo_hard_trData = SimpleImageLoader(DATASET_PATH, 'train', train_ids,
+                                              transform=transforms.Compose([
+                                                  transforms.Resize(opts.imResize),
+                                                  transforms.RandomResizedCrop(opts.imsize),
+                                                  transforms.RandomHorizontalFlip(),
+                                                  transforms.RandomVerticalFlip(),
+                                                  transforms.ToTensor(),
+                                                  transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                                                                       std=[0.229, 0.224, 0.225]), ]))
+
+        pseudo_hard_trData.flushData()
+        newNames, newclasses = pseudoAttatchedFileNMs, pseudoAttatchedLabels
+        pseudo_hard_trData.setNewData(newNames, newclasses)
+        print("Pseudo Hard data size:", len(newNames))
+
+        pesudo_hard_training_loader = torch.utils.data.DataLoader(
+            pseudo_hard_trData, batch_size=opts.batchsize, shuffle=True, num_workers=0, pin_memory=True, drop_last=True)
+        print('pseudo_hard_loader done')
         
-        
-        loaded_hard_trData = SimpleImageLoader(DATASET_PATH, 'train', train_ids,
+
+        unlabel_data = SimpleImageLoader(DATASET_PATH, 'unlabel', unl_ids,
                               transform=transforms.Compose([
                                   transforms.Resize(opts.imResize),
                                   transforms.RandomResizedCrop(opts.imsize),
@@ -336,28 +377,9 @@ def main():
                                   transforms.RandomVerticalFlip(),
                                   transforms.ToTensor(),
                                   transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),]))
-
-        loaded_hard_trData.flush()
-        loaded_hard_trData.setNewData(getTrData_specific_difficulty(hardIdxList))
-
-        hard_train_loader = torch.utils.data.DataLoader(
-            loaded_hard_trData, batch_size=opts.batchsize, shuffle=True, num_workers=0, pin_memory=True, drop_last=True)
-        print('hard train_loader done')
-        
-        
-        
-
-        unlabel_loader = torch.utils.data.DataLoader(
-            SimpleImageLoader(DATASET_PATH, 'unlabel', unl_ids,
-                              transform=transforms.Compose([
-                                  transforms.Resize(opts.imResize),
-                                  transforms.RandomResizedCrop(opts.imsize),
-                                  transforms.RandomHorizontalFlip(),
-                                  transforms.RandomVerticalFlip(),
-                                  transforms.ToTensor(),
-                                  transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),])),
+        unlabel_loader = torch.utils.data.DataLoader(unlabel_data,
                                 batch_size=opts.batchsize, shuffle=True, num_workers=0, pin_memory=True, drop_last=True)
-        print('unlabel_loader done')    
+        print('unlabel_loader done')
 
         validation_loader = torch.utils.data.DataLoader(
             SimpleImageLoader(DATASET_PATH, 'val', val_ids,
@@ -369,11 +391,30 @@ def main():
                                batch_size=opts.batchsize, shuffle=False, num_workers=0, pin_memory=True, drop_last=False)
         print('validation_loader done')
 
+        # pseudo_data = SimpleImageLoader(DATASET_PATH, 'train', train_ids,
+        #                       transform=transforms.Compose([
+        #                           transforms.Resize(opts.imResize),
+        #                           transforms.RandomResizedCrop(opts.imsize),
+        #                           transforms.RandomHorizontalFlip(),
+        #                           transforms.RandomVerticalFlip(),
+        #                           transforms.ToTensor(),
+        #                           transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),]))
+        #
+        # # print (unlabel_data.imnames)
+        #
+        # pseudo_data.flushData()
+        # pseudo_data.imnames = unlabel_data.imnames
+        # pseudo_data.imclasses = [divmod(idx,256)[1] for idx in range(len(pseudo_data.imnames))]
+        # # print ("pseudo_data names")
+        # # print (pseudo_data.imnames)
+        # # print ("pseudo_data classes")
+        # # print (pseudo_data.imclasses)
+        # pseudo_loader = torch.utils.data.DataLoader(pseudo_data,
+        #                        batch_size=opts.batchsize, shuffle=False, num_workers=0, pin_memory=True, drop_last=False)
+        # print('psuedo_loader done')
 
+        # import sys; sys.exit(1)
 
-
-        if opts.steps_per_epoch < 0:
-            opts.steps_per_epoch = len(train_loader)
 
         # Set optimizer
         optimizer = optim.Adam(model.parameters(), lr=opts.lr, weight_decay=5e-4)
@@ -387,9 +428,15 @@ def main():
 
         # Train and Validation 
         best_acc = -1
-        for epoch in range(1,71):
+
+        print ("DEFAULT DATA LEARNING IS STARTED")
+        for epoch in range(1,101):
+
+            if opts.steps_per_epoch < 0:
+                opts.steps_per_epoch = len(default_training_loader)
+
             # print('start training')
-            loss, loss_x, loss_u, avg_top1, avg_top5 = train(opts, easy_train_loader, unlabel_loader, model, train_criterion, optimizer, ema_optimizer, epoch, use_gpu)
+            loss, loss_x, loss_u, avg_top1, avg_top5 = train(opts, default_training_loader, unlabel_loader, model, train_criterion, optimizer, ema_optimizer, epoch, use_gpu)
             print('epoch {:03d}/{:03d} finished, loss: {:.3f}, loss_x: {:.3f}, loss_un: {:.3f}, avg_top1: {:.3f}%, avg_top5: {:.3f}%'.format(epoch, opts.epochs, loss, loss_x, loss_u, avg_top1, avg_top5))
             # scheduler.step()
 
@@ -410,10 +457,15 @@ def main():
                 else:
                     torch.save(ema_model.state_dict(), os.path.join('runs', opts.name + '_e{}'.format(epoch)))
 
-        for epoch in range(71, 141):
+        print("EASY DATA LEARNING IS STARTED")
+        for epoch in range(101,201):
+
+            if opts.steps_per_epoch < 0:
+                opts.steps_per_epoch = len(pesudo_easy_training_loader)
+
             # print('start training')
-            loss, loss_x, loss_u, avg_top1, avg_top5 = train(opts, med_train_loader, unlabel_loader, model, train_criterion,
-                                                             optimizer, ema_optimizer, epoch, use_gpu)
+            loss, loss_x, loss_u, avg_top1, avg_top5 = train(opts, pesudo_easy_training_loader, unlabel_loader, model,
+                                                             train_criterion, optimizer, ema_optimizer, epoch, use_gpu)
             print(
                 'epoch {:03d}/{:03d} finished, loss: {:.3f}, loss_x: {:.3f}, loss_un: {:.3f}, avg_top1: {:.3f}%, avg_top5: {:.3f}%'.format(
                     epoch, opts.epochs, loss, loss_x, loss_u, avg_top1, avg_top5))
@@ -436,10 +488,15 @@ def main():
                 else:
                     torch.save(ema_model.state_dict(), os.path.join('runs', opts.name + '_e{}'.format(epoch)))
 
-        for epoch in range(141, 201):
+        print("MED DATA LEARNING IS STARTED")
+        for epoch in range(201,301):
+
+            if opts.steps_per_epoch < 0:
+                opts.steps_per_epoch = len(pesudo_med_training_loader)
+
             # print('start training')
-            loss, loss_x, loss_u, avg_top1, avg_top5 = train(opts, hard_train_loader, unlabel_loader, model, train_criterion,
-                                                             optimizer, ema_optimizer, epoch, use_gpu)
+            loss, loss_x, loss_u, avg_top1, avg_top5 = train(opts, pesudo_med_training_loader, unlabel_loader, model,
+                                                             train_criterion, optimizer, ema_optimizer, epoch, use_gpu)
             print(
                 'epoch {:03d}/{:03d} finished, loss: {:.3f}, loss_x: {:.3f}, loss_un: {:.3f}, avg_top1: {:.3f}%, avg_top5: {:.3f}%'.format(
                     epoch, opts.epochs, loss, loss_x, loss_u, avg_top1, avg_top5))
@@ -461,6 +518,45 @@ def main():
                     nsml.save(opts.name + '_e{}'.format(epoch))
                 else:
                     torch.save(ema_model.state_dict(), os.path.join('runs', opts.name + '_e{}'.format(epoch)))
+
+
+        print("HARD DATA LEARNING IS STARTED")
+        for epoch in range(301,501):
+
+            if opts.steps_per_epoch < 0:
+                opts.steps_per_epoch = len(pesudo_hard_training_loader)
+
+            # print('start training')
+            loss, loss_x, loss_u, avg_top1, avg_top5 = train(opts, pesudo_hard_training_loader, unlabel_loader, model,
+                                                             train_criterion, optimizer, ema_optimizer, epoch, use_gpu)
+            print(
+                'epoch {:03d}/{:03d} finished, loss: {:.3f}, loss_x: {:.3f}, loss_un: {:.3f}, avg_top1: {:.3f}%, avg_top5: {:.3f}%'.format(
+                    epoch, opts.epochs, loss, loss_x, loss_u, avg_top1, avg_top5))
+            # scheduler.step()
+
+            # print('start validation')
+            acc_top1, acc_top5 = validation(opts, validation_loader, ema_model, epoch, use_gpu)
+
+            is_best = acc_top1 > best_acc
+            best_acc = max(acc_top1, best_acc)
+            if is_best:
+                print('model achieved the best accuracy ({:.3f}%) - saving best checkpoint...'.format(best_acc))
+                if IS_ON_NSML:
+                    nsml.save(opts.name + '_best')
+                else:
+                    torch.save(ema_model.state_dict(), os.path.join('runs', opts.name + '_best'))
+            if (epoch + 1) % opts.save_epoch == 0:
+                if IS_ON_NSML:
+                    nsml.save(opts.name + '_e{}'.format(epoch))
+                else:
+                    torch.save(ema_model.state_dict(), os.path.join('runs', opts.name + '_e{}'.format(epoch)))
+
+
+
+
+
+    # print("Final UnlabeledData prediction Test")
+    # customPred(opts, pseudo_loader, ema_model, epoch, use_gpu)
 
 
 
@@ -629,6 +725,7 @@ def customPred(opts, validation_loader, model, epoch, use_gpu):
 
     wholeLabels = []
     wholePreds = []
+    wholeProbs  = []
 
     with torch.no_grad():
         for batch_idx, data in enumerate(validation_loader):
@@ -640,21 +737,27 @@ def customPred(opts, validation_loader, model, epoch, use_gpu):
             embed_fea, preds = model(inputs)
 
             wholeLabels.extend(list(labels.numpy()))
-            wholePreds.extend(np.argmax(preds.cpu().numpy(),axis=-1))
+            preds =preds.data.cpu().numpy()
+            predsArgmax = np.argmax(preds,axis=-1)
+            wholePreds.extend(predsArgmax)
+            probsBuffer =[]
+            for sampleIdx, sampleArgmaxIdx in enumerate(list(predsArgmax)):
+                probsBuffer.append(preds[sampleIdx][sampleArgmaxIdx])
+            wholeProbs.extend(probsBuffer)
     print("Original labels")
     print (wholeLabels)
     print("Pred. result")
     print (wholePreds)
+    print("Pred. Probs")
+    print (wholeProbs)
 
-    consensusIdxList = []
-    for idx, _ in enumerate(wholeLabels):
-        if wholeLabels[idx] == wholePreds[idx]:
-            consensusIdxList.append(idx)
-
-    print ("Identical Idx list")
-    print (consensusIdxList)
-
-
+    # consensusIdxList = []
+    # for idx, _ in enumerate(wholeLabels):
+    #     if wholeLabels[idx] == wholePreds[idx]:
+    #         consensusIdxList.append(idx)
+    #
+    # print ("Identical Idx list")
+    # print (consensusIdxList)
 
     # return labels.numpy(), preds.numpy()
 
