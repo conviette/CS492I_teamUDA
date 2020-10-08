@@ -196,8 +196,8 @@ def bind_nsml(model):
 ######################################################################
 parser = argparse.ArgumentParser(description='Sample Product200K Training')
 parser.add_argument('--start_epoch', type=int, default=0, metavar='N', help='number of start epoch (default: 1)')
-parser.add_argument('--epochs', type=int, default=200, metavar='N', help='number of epochs to train (default: 200)')
-parser.add_argument('--steps_per_epoch', type=int, default=30, metavar='N', help='number of steps to train per epoch (-1: num_data//batchsize)')
+parser.add_argument('--epochs', type=int, default=700, metavar='N', help='number of epochs to train (default: 200)')
+parser.add_argument('--steps_per_epoch', type=int, default=-1, metavar='N', help='number of steps to train per epoch (-1: num_data//batchsize)')
 
 # basic settings
 parser.add_argument('--name',default='Res18baseMM', type=str, help='output model name')
@@ -430,10 +430,10 @@ def main():
         best_acc = -1
 
         print ("DEFAULT DATA LEARNING IS STARTED")
-        for epoch in range(1,101):
+        for epoch in range(1,51):
 
-            if opts.steps_per_epoch < 0:
-                opts.steps_per_epoch = len(default_training_loader)
+            # if opts.steps_per_epoch < 0:
+            opts.steps_per_epoch = max(30, len(default_training_loader))
 
             # print('start training')
             loss, loss_x, loss_u, avg_top1, avg_top5 = train(opts, default_training_loader, unlabel_loader, model, train_criterion, optimizer, ema_optimizer, epoch, use_gpu)
@@ -458,10 +458,10 @@ def main():
                     torch.save(ema_model.state_dict(), os.path.join('runs', opts.name + '_e{}'.format(epoch)))
 
         print("EASY DATA LEARNING IS STARTED")
-        for epoch in range(101,201):
+        for epoch in range(51,151):
 
-            if opts.steps_per_epoch < 0:
-                opts.steps_per_epoch = len(pesudo_easy_training_loader)
+            # if opts.steps_per_epoch < 0:
+            opts.steps_per_epoch = max(30,len(pesudo_easy_training_loader))
 
             # print('start training')
             loss, loss_x, loss_u, avg_top1, avg_top5 = train(opts, pesudo_easy_training_loader, unlabel_loader, model,
@@ -489,10 +489,10 @@ def main():
                     torch.save(ema_model.state_dict(), os.path.join('runs', opts.name + '_e{}'.format(epoch)))
 
         print("MED DATA LEARNING IS STARTED")
-        for epoch in range(201,301):
+        for epoch in range(151,351):
 
-            if opts.steps_per_epoch < 0:
-                opts.steps_per_epoch = len(pesudo_med_training_loader)
+            # if opts.steps_per_epoch < 0:
+            opts.steps_per_epoch = max(30,len(pesudo_med_training_loader))
 
             # print('start training')
             loss, loss_x, loss_u, avg_top1, avg_top5 = train(opts, pesudo_med_training_loader, unlabel_loader, model,
@@ -521,10 +521,10 @@ def main():
 
 
         print("HARD DATA LEARNING IS STARTED")
-        for epoch in range(301,501):
+        for epoch in range(351,801):
 
-            if opts.steps_per_epoch < 0:
-                opts.steps_per_epoch = len(pesudo_hard_training_loader)
+            # if opts.steps_per_epoch < 0:
+            opts.steps_per_epoch = max(30,len(pesudo_hard_training_loader))
 
             # print('start training')
             loss, loss_x, loss_u, avg_top1, avg_top5 = train(opts, pesudo_hard_training_loader, unlabel_loader, model,

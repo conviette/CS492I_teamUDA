@@ -21,3 +21,4 @@ def printGPUinfo():
             pass
 
     pprint.pprint(out_dict)
+
