@@ -1,5 +1,5 @@
 from PIL import Image
-import os
+import os, json
 import os.path
 import torch.utils.data
 import torchvision.transforms as transforms
@@ -29,7 +29,7 @@ class TransformRandom:
         return base_img, uda_img
 
 class SimpleImageLoader(torch.utils.data.Dataset):
-    def __init__(self, rootdir, split, ids=None, transform=None, loader=default_image_loader, UDA=False, UDA_Trans = None):
+    def __init__(self, rootdir, split, ids=None, transform=None, loader=default_image_loader, UDA=False, UDA_Trans = None, DomRel = False):
 
         assert (not(UDA) or UDA_Trans != None)
         if split == 'test':
@@ -42,20 +42,28 @@ class SimpleImageLoader(torch.utils.data.Dataset):
         imnames = []
         imclasses = []
 
-        with open(meta_file, 'r') as rf:
-            for i, line in enumerate(rf):
-                if i == 0:
-                    continue
-                instance_id, label, file_name = line.strip().split()
-                if int(label) == -1 and (split != 'unlabel' and split != 'test'):
-                    continue
-                if int(label) != -1 and (split == 'unlabel' or split == 'test'):
-                    continue
-                if (ids is None) or (int(instance_id) in ids):
-                    if os.path.exists(os.path.join(self.impath, file_name)):
-                        imnames.append(file_name)
-                        if split == 'train' or split == 'val':
-                            imclasses.append(int(label))
+        if DomRel:
+            with open('domain_rel.json', 'r') as rf:
+                fns = json.load(rf)
+                for fn in fns:
+                    if os.path.exists(os.path.join(self.impath, fn)):
+                        imnames.append(fn)
+
+        else:
+            with open(meta_file, 'r') as rf:
+                for i, line in enumerate(rf):
+                    if i == 0:
+                        continue
+                    instance_id, label, file_name = line.strip().split()
+                    if int(label) == -1 and (split != 'unlabel' and split != 'test'):
+                        continue
+                    if int(label) != -1 and (split == 'unlabel' or split == 'test'):
+                        continue
+                    if (ids is None) or (int(instance_id) in ids):
+                        if os.path.exists(os.path.join(self.impath, file_name)):
+                            imnames.append(file_name)
+                            if split == 'train' or split == 'val':
+                                imclasses.append(int(label))
 
         self.transform = transform
         self.TransformTwice = TransformTwice(transform)

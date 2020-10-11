@@ -21,7 +21,7 @@ import torch.nn.functional as F
 
 import torchvision
 from torchvision import datasets, models, transforms
-from randaugment import RandAugment
+from randaug import RandAugment
 
 import torch.nn.functional as F
 
@@ -76,13 +76,22 @@ def linear_rampup(current, rampup_length):
 
 class SemiLoss(object):
     def __init__(self):
-        self.celoss = nn.KLDivLoss()
+        self.celoss = nn.KLDivLoss(reduction='sum')
 
-    def __call__(self, outputs_x, targets_x, outputs_u, targets_u, outputs_uda, targets_uda, epoch, final_epoch):
+    def __call__(self, outputs_x, targets_x, outputs_u, targets_u, pred_uda1, pred_uda2, epoch, final_epoch):
         probs_u = torch.softmax(outputs_u, dim=1)
         Lx = -torch.mean(torch.sum(F.log_softmax(outputs_x, dim=1) * targets_x, dim=1))
         Lu = torch.mean((probs_u - targets_u)**2)
-        Luda = self.celoss(outputs_uda, targets_uda)
+        #masking
+        soft_prob, pred_1_ind = torch.max(torch.softmax(pred_uda1, dim=1), 1)
+        pred_uda1 = pred_uda1[soft_prob>0.5, :]
+        pred_uda2 = pred_uda2[soft_prob>0.5, :]
+        #sharpening
+        #pred_uda1 = torch.div(pred_uda1, 0.4)
+
+        pred_uda1, pred_uda2 = F.log_softmax(pred_uda1, dim=1), torch.softmax(pred_uda2, dim=1)
+
+        Luda = self.celoss(pred_uda1, pred_uda2)
         return Lx, Lu, Luda, opts.lambda_u * linear_rampup(epoch, final_epoch)
 
 class WeightEMA(object):
@@ -339,7 +348,7 @@ def main():
                                   transforms.ToTensor(),
                                   transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),]), UDA=True, UDA_Trans=uda_trans_list),
                                 batch_size=opts.batchsize, shuffle=True, num_workers=0, pin_memory=True, drop_last=True)
-        print('unlabel_loader done')
+        print('uda_loader done')
 
 
         #####
@@ -461,7 +470,6 @@ def train(opts, train_loader, unlabel_loader, uda_loader,  model, criterion, opt
                 embed_uda2, pred_uda1 = model(inputs_uda1)
                 embed_uda2, pred_uda2 = model(inputs_uda2)
                 pred_u_all = (torch.softmax(pred_u1, dim=1) + torch.softmax(pred_u2, dim=1)) / 2
-                pred_uda1, pred_uda2 = F.log_softmax(pred_uda1, dim=1), torch.softmax(pred_uda2, dim=1)
                 pt = pred_u_all**(1/opts.T)
                 targets_u = pt / pt.sum(dim=1, keepdim=True)
                 targets_u = targets_u.detach()
