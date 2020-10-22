@@ -16,6 +16,7 @@ class RandAugment:
                         lambda img: F.adjust_brightness(img, random.random()+1),
                         lambda img: ImageEnhance.Sharpness(img).enhance(1 + random.choice(range(1, 10)) * random.choice([-1, 1])),
                         lambda img: ImageOps.invert(img),
+                        lambda img: transforms.ColorJitter(hue=0.5)(img),
                         lambda img: transforms.RandomAffine(0, shear = 45)(img),
                         lambda img: transforms.RandomAffine(0, shear = [0, 0, -45, 45])(img),
                         lambda img: transforms.RandomAffine(0, translate=(.5, 0))(img),
@@ -24,5 +25,6 @@ class RandAugment:
 
 
     def __call__(self, img):
-        trns = random.choice(self.transforms)
+        for i in range(random.choice([1, 2, 3, 4])):
+            trns = random.choice(self.transforms)
         return trns(img)

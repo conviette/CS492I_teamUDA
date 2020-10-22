@@ -6,7 +6,6 @@ import torchvision.transforms as transforms
 import numpy as np
 import torch
 from random import choice
-from randaugment import RandAugment
 
 def default_image_loader(path):
     return Image.open(path).convert('RGB')

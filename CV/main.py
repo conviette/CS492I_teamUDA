@@ -87,7 +87,7 @@ class SemiLoss(object):
         pred_uda1 = pred_uda1[soft_prob>0.5, :]
         pred_uda2 = pred_uda2[soft_prob>0.5, :]
         #sharpening
-        #pred_uda1 = torch.div(pred_uda1, 0.4)
+        pred_uda1 = torch.div(pred_uda1, 0.4)
 
         pred_uda1, pred_uda2 = F.log_softmax(pred_uda1, dim=1), torch.softmax(pred_uda2, dim=1)
 
@@ -208,12 +208,12 @@ def bind_nsml(model):
 ######################################################################
 parser = argparse.ArgumentParser(description='Sample Product200K Training')
 parser.add_argument('--start_epoch', type=int, default=1, metavar='N', help='number of start epoch (default: 1)')
-parser.add_argument('--epochs', type=int, default=200, metavar='N', help='number of epochs to train (default: 200)')
+parser.add_argument('--epochs', type=int, default=500, metavar='N', help='number of epochs to train (default: 200)')
 parser.add_argument('--steps_per_epoch', type=int, default=30, metavar='N', help='number of steps to train per epoch (-1: num_data//batchsize)')
 
 # basic settings
 parser.add_argument('--name',default='Res18baseMM', type=str, help='output model name')
-parser.add_argument('--gpu_ids',default='0', type=str,help='gpu_ids: e.g. 0  0,1,2  0,2')
+parser.add_argument('--gpu_ids',default='1,2', type=str,help='gpu_ids: e.g. 0  0,1,2  0,2')
 parser.add_argument('--batchsize', default=200, type=int, help='batchsize')
 parser.add_argument('--seed', type=int, default=123, help='random seed')
 
@@ -266,11 +266,11 @@ def main():
 
 
     # Set model
-    model = Res18_basic(NUM_CLASSES)
+    model = Res50(NUM_CLASSES)
     model.eval()
 
     # set EMA model
-    ema_model = Res18_basic(NUM_CLASSES)
+    ema_model = Res50(NUM_CLASSES)
     for param in ema_model.parameters():
         param.detach_()
     ema_model.eval()
