@@ -31,7 +31,7 @@ import nsml
 from nsml import DATASET_PATH, IS_ON_NSML
 
 from dataInfo import easyIdxList, medIdxList, hardIdxList, getTrData_specific_difficulty, pseudoAttatchedFileNMs, pseudoAttatchedLabels, pseudoEasyIdxs, pseudoMedIdxs
-
+from dataInfo import level1names,level2names,level3names,level4names, level1classes,level2classes,level3classes,level4classes
 NUM_CLASSES = 265
 
 def top_n_accuracy_score(y_true, y_prob, n=5, normalize=True):
@@ -196,8 +196,9 @@ def bind_nsml(model):
 ######################################################################
 parser = argparse.ArgumentParser(description='Sample Product200K Training')
 parser.add_argument('--start_epoch', type=int, default=0, metavar='N', help='number of start epoch (default: 1)')
-parser.add_argument('--epochs', type=int, default=700, metavar='N', help='number of epochs to train (default: 200)')
+parser.add_argument('--epochs', type=int, default=200, metavar='N', help='number of epochs to train (default: 200)')
 parser.add_argument('--steps_per_epoch', type=int, default=-1, metavar='N', help='number of steps to train per epoch (-1: num_data//batchsize)')
+parser.add_argument('--curriculum', type=bool, default=True,  help='curriculum learning option, default is False')
 
 # basic settings
 parser.add_argument('--name',default='Res18baseMM', type=str, help='output model name')
@@ -293,81 +294,125 @@ def main():
         print('found {} train, {} validation and {} unlabeled images'.format(len(train_ids), len(val_ids), len(unl_ids)))
 
 
+        lv1_training_loader = None
+        lv12_training_loader = None
+        lv23_training_loader = None
+        lv34_training_loader = None
+        lv4_training_loader = None
+        if opts.curriculum:
+            opts.epochs = opts.epochs + 500
 
-        default_trSet = SimpleImageLoader(DATASET_PATH, 'train', train_ids,
+            lv1_trData = SimpleImageLoader(DATASET_PATH, 'train', train_ids,
+                                  transform=transforms.Compose([
+                                      transforms.Resize(opts.imResize),
+                                      transforms.RandomResizedCrop(opts.imsize),
+                                      transforms.RandomHorizontalFlip(),
+                                      transforms.RandomVerticalFlip(),
+                                      transforms.ToTensor(),
+                                      transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),]))
+
+            lv1_trData.flushData()
+            newNames = level1names
+            newclasses = level1classes
+            lv1_trData.setNewData(newNames, newclasses)
+            print ("level 1 training data size:", len(newNames))
+
+            lv1_training_loader = torch.utils.data.DataLoader(
+                lv1_trData, batch_size=opts.batchsize, shuffle=True, num_workers=0, pin_memory=True, drop_last=True)
+            print('lv1_training_loader done')
+
+            lv12_trData = SimpleImageLoader(DATASET_PATH, 'train', train_ids,
+                                                  transform=transforms.Compose([
+                                                      transforms.Resize(opts.imResize),
+                                                      transforms.RandomResizedCrop(opts.imsize),
+                                                      transforms.RandomHorizontalFlip(),
+                                                      transforms.RandomVerticalFlip(),
+                                                      transforms.ToTensor(),
+                                                      transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                                                                           std=[0.229, 0.224, 0.225]), ]))
+
+            lv12_trData.flushData()
+            newNames = level1names + level2names
+            newclasses = level1classes + level2classes
+            lv12_trData.setNewData(newNames, newclasses)
+            print("level 1+2 training data size:", len(newNames))
+
+            lv12_training_loader = torch.utils.data.DataLoader(
+                lv12_trData, batch_size=opts.batchsize, shuffle=True, num_workers=0, pin_memory=True, drop_last=True)
+            print('lv1+2_training_loader done')
+
+            lv23_trData = SimpleImageLoader(DATASET_PATH, 'train', train_ids,
+                                                   transform=transforms.Compose([
+                                                       transforms.Resize(opts.imResize),
+                                                       transforms.RandomResizedCrop(opts.imsize),
+                                                       transforms.RandomHorizontalFlip(),
+                                                       transforms.RandomVerticalFlip(),
+                                                       transforms.ToTensor(),
+                                                       transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                                                                            std=[0.229, 0.224, 0.225]), ]))
+
+            lv23_trData.flushData()
+            newNames = level2names + level3names
+            newclasses = level2classes + level3classes
+            lv23_trData.setNewData(newNames, newclasses)
+            print("level 2+3 training data size:", len(newNames))
+
+            lv23_training_loader = torch.utils.data.DataLoader(
+                lv23_trData, batch_size=opts.batchsize, shuffle=True, num_workers=0, pin_memory=True, drop_last=True)
+            print('lv2+3_training_loader done')
+
+
+            lv34_trData = SimpleImageLoader(DATASET_PATH, 'train', train_ids,
+                                                   transform=transforms.Compose([
+                                                       transforms.Resize(opts.imResize),
+                                                       transforms.RandomResizedCrop(opts.imsize),
+                                                       transforms.RandomHorizontalFlip(),
+                                                       transforms.RandomVerticalFlip(),
+                                                       transforms.ToTensor(),
+                                                       transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                                                                            std=[0.229, 0.224, 0.225]), ]))
+
+            lv34_trData.flushData()
+            newNames = level3names + level4names
+            newclasses = level3classes + level4classes
+            lv34_trData.setNewData(newNames, newclasses)
+            print("level 3+4 training data size:", len(newNames))
+
+            lv34_training_loader = torch.utils.data.DataLoader(
+                lv34_trData, batch_size=opts.batchsize, shuffle=True, num_workers=0, pin_memory=True, drop_last=True)
+            print('lv3+4_training_loader done')
+
+            lv4_trData = SimpleImageLoader(DATASET_PATH, 'train', train_ids,
+                                                  transform=transforms.Compose([
+                                                      transforms.Resize(opts.imResize),
+                                                      transforms.RandomResizedCrop(opts.imsize),
+                                                      transforms.RandomHorizontalFlip(),
+                                                      transforms.RandomVerticalFlip(),
+                                                      transforms.ToTensor(),
+                                                      transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                                                                           std=[0.229, 0.224, 0.225]), ]))
+
+            lv4_trData.flushData()
+            newNames = level4names
+            newclasses = level4classes
+            lv4_trData.setNewData(newNames, newclasses)
+            print("level 4 training data size:", len(newNames))
+
+            lv4_training_loader = torch.utils.data.DataLoader(
+                lv4_trData, batch_size=opts.batchsize, shuffle=True, num_workers=0, pin_memory=True, drop_last=True)
+            print('lv4_training_loader done')
+
+        train_loader = torch.utils.data.DataLoader(
+            SimpleImageLoader(DATASET_PATH, 'train', train_ids,
                               transform=transforms.Compose([
                                   transforms.Resize(opts.imResize),
                                   transforms.RandomResizedCrop(opts.imsize),
                                   transforms.RandomHorizontalFlip(),
                                   transforms.RandomVerticalFlip(),
                                   transforms.ToTensor(),
-                                  transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),]))
-
-
-        print ("original training data size:", len(default_trSet.imnames))
-
-        default_training_loader = torch.utils.data.DataLoader(
-            default_trSet, batch_size=opts.batchsize, shuffle=True, num_workers=0, pin_memory=True, drop_last=True)
-        print('easy train_loader done')
-        
-
-        pseudo_easy_trData = SimpleImageLoader(DATASET_PATH, 'train', train_ids,
-                              transform=transforms.Compose([
-                                  transforms.Resize(opts.imResize),
-                                  transforms.RandomResizedCrop(opts.imsize),
-                                  transforms.RandomHorizontalFlip(),
-                                  transforms.RandomVerticalFlip(),
-                                  transforms.ToTensor(),
-                                  transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),]))
-
-        pseudo_easy_trData.flushData()
-        newNames, newclasses = getTrData_specific_difficulty(pseudoAttatchedFileNMs, pseudoAttatchedLabels, pseudoEasyIdxs)
-        pseudo_easy_trData.setNewData(newNames, newclasses)
-        print ("Pseudo Easy data size:", len(newNames))
-
-        pesudo_easy_training_loader = torch.utils.data.DataLoader(
-            pseudo_easy_trData, batch_size=opts.batchsize, shuffle=True, num_workers=0, pin_memory=True, drop_last=True)
-        print('pseudo_easy_loader done')
-
-        pseudo_med_trData = SimpleImageLoader(DATASET_PATH, 'train', train_ids,
-                                               transform=transforms.Compose([
-                                                   transforms.Resize(opts.imResize),
-                                                   transforms.RandomResizedCrop(opts.imsize),
-                                                   transforms.RandomHorizontalFlip(),
-                                                   transforms.RandomVerticalFlip(),
-                                                   transforms.ToTensor(),
-                                                   transforms.Normalize(mean=[0.485, 0.456, 0.406],
-                                                                        std=[0.229, 0.224, 0.225]), ]))
-
-        pseudo_med_trData.flushData()
-        newNames, newclasses = getTrData_specific_difficulty(pseudoAttatchedFileNMs, pseudoAttatchedLabels,
-                                                             pseudoMedIdxs)
-        pseudo_med_trData.setNewData(newNames, newclasses)
-        print("Pseudo Med data size:", len(newNames))
-
-        pesudo_med_training_loader = torch.utils.data.DataLoader(
-            pseudo_med_trData, batch_size=opts.batchsize, shuffle=True, num_workers=0, pin_memory=True, drop_last=True)
-        print('pseudo_med_loader done')
-
-        pseudo_hard_trData = SimpleImageLoader(DATASET_PATH, 'train', train_ids,
-                                              transform=transforms.Compose([
-                                                  transforms.Resize(opts.imResize),
-                                                  transforms.RandomResizedCrop(opts.imsize),
-                                                  transforms.RandomHorizontalFlip(),
-                                                  transforms.RandomVerticalFlip(),
-                                                  transforms.ToTensor(),
-                                                  transforms.Normalize(mean=[0.485, 0.456, 0.406],
-                                                                       std=[0.229, 0.224, 0.225]), ]))
-
-        pseudo_hard_trData.flushData()
-        newNames, newclasses = pseudoAttatchedFileNMs, pseudoAttatchedLabels
-        pseudo_hard_trData.setNewData(newNames, newclasses)
-        print("Pseudo Hard data size:", len(newNames))
-
-        pesudo_hard_training_loader = torch.utils.data.DataLoader(
-            pseudo_hard_trData, batch_size=opts.batchsize, shuffle=True, num_workers=0, pin_memory=True, drop_last=True)
-        print('pseudo_hard_loader done')
-        
+                                  transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]), ])),
+            batch_size=opts.batchsize, shuffle=True, num_workers=0, pin_memory=True, drop_last=True)
+        print('train_loader done')
 
         unlabel_data = SimpleImageLoader(DATASET_PATH, 'unlabel', unl_ids,
                               transform=transforms.Compose([
@@ -391,30 +436,6 @@ def main():
                                batch_size=opts.batchsize, shuffle=False, num_workers=0, pin_memory=True, drop_last=False)
         print('validation_loader done')
 
-        # pseudo_data = SimpleImageLoader(DATASET_PATH, 'train', train_ids,
-        #                       transform=transforms.Compose([
-        #                           transforms.Resize(opts.imResize),
-        #                           transforms.RandomResizedCrop(opts.imsize),
-        #                           transforms.RandomHorizontalFlip(),
-        #                           transforms.RandomVerticalFlip(),
-        #                           transforms.ToTensor(),
-        #                           transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),]))
-        #
-        # # print (unlabel_data.imnames)
-        #
-        # pseudo_data.flushData()
-        # pseudo_data.imnames = unlabel_data.imnames
-        # pseudo_data.imclasses = [divmod(idx,256)[1] for idx in range(len(pseudo_data.imnames))]
-        # # print ("pseudo_data names")
-        # # print (pseudo_data.imnames)
-        # # print ("pseudo_data classes")
-        # # print (pseudo_data.imclasses)
-        # pseudo_loader = torch.utils.data.DataLoader(pseudo_data,
-        #                        batch_size=opts.batchsize, shuffle=False, num_workers=0, pin_memory=True, drop_last=False)
-        # print('psuedo_loader done')
-
-        # import sys; sys.exit(1)
-
 
         # Set optimizer
         optimizer = optim.Adam(model.parameters(), lr=opts.lr, weight_decay=5e-4)
@@ -429,114 +450,173 @@ def main():
         # Train and Validation 
         best_acc = -1
 
-        print ("DEFAULT DATA LEARNING IS STARTED")
-        for epoch in range(1,51):
+        if opts.curriculum:
+            print ("LEVEL1 DATA LEARNING IS STARTED")
+            for epoch in range(1,101):
 
-            # if opts.steps_per_epoch < 0:
-            opts.steps_per_epoch = max(30, len(default_training_loader))
+                # if opts.steps_per_epoch < 0:
+                opts.steps_per_epoch = max(30, len(lv1_training_loader))
 
+                # print('start training')
+                loss, loss_x, loss_u, avg_top1, avg_top5 = train(opts, lv1_training_loader, unlabel_loader, model, train_criterion, optimizer, ema_optimizer, epoch, use_gpu)
+                print('epoch {:03d}/{:03d} finished, loss: {:.3f}, loss_x: {:.3f}, loss_un: {:.3f}, avg_top1: {:.3f}%, avg_top5: {:.3f}%'.format(epoch, opts.epochs, loss, loss_x, loss_u, avg_top1, avg_top5))
+                # scheduler.step()
+
+                # print('start validation')
+                acc_top1, acc_top5 = validation(opts, validation_loader, ema_model, epoch, use_gpu)
+
+                is_best = acc_top1 > best_acc
+                best_acc = max(acc_top1, best_acc)
+                if is_best:
+                    print('model achieved the best accuracy ({:.3f}%) - saving best checkpoint...'.format(best_acc))
+                    if IS_ON_NSML:
+                        nsml.save(opts.name + '_best')
+                    else:
+                        torch.save(ema_model.state_dict(), os.path.join('runs', opts.name + '_best'))
+                if (epoch + 1) % opts.save_epoch == 0:
+                    if IS_ON_NSML:
+                        nsml.save(opts.name + '_e{}'.format(epoch))
+                    else:
+                        torch.save(ema_model.state_dict(), os.path.join('runs', opts.name + '_e{}'.format(epoch)))
+
+            print("LEVEL12 DATA LEARNING IS STARTED")
+            for epoch in range(101,201):
+
+                # if opts.steps_per_epoch < 0:
+                opts.steps_per_epoch = max(30,len(lv12_training_loader))
+
+                # print('start training')
+                loss, loss_x, loss_u, avg_top1, avg_top5 = train(opts, lv12_training_loader, unlabel_loader, model,
+                                                                 train_criterion, optimizer, ema_optimizer, epoch, use_gpu)
+                print(
+                    'epoch {:03d}/{:03d} finished, loss: {:.3f}, loss_x: {:.3f}, loss_un: {:.3f}, avg_top1: {:.3f}%, avg_top5: {:.3f}%'.format(
+                        epoch, opts.epochs, loss, loss_x, loss_u, avg_top1, avg_top5))
+                # scheduler.step()
+
+                # print('start validation')
+                acc_top1, acc_top5 = validation(opts, validation_loader, ema_model, epoch, use_gpu)
+
+                is_best = acc_top1 > best_acc
+                best_acc = max(acc_top1, best_acc)
+                if is_best:
+                    print('model achieved the best accuracy ({:.3f}%) - saving best checkpoint...'.format(best_acc))
+                    if IS_ON_NSML:
+                        nsml.save(opts.name + '_best')
+                    else:
+                        torch.save(ema_model.state_dict(), os.path.join('runs', opts.name + '_best'))
+                if (epoch + 1) % opts.save_epoch == 0:
+                    if IS_ON_NSML:
+                        nsml.save(opts.name + '_e{}'.format(epoch))
+                    else:
+                        torch.save(ema_model.state_dict(), os.path.join('runs', opts.name + '_e{}'.format(epoch)))
+
+            print("LEVEL23 DATA LEARNING IS STARTED")
+            for epoch in range(201,301):
+
+                # if opts.steps_per_epoch < 0:
+                opts.steps_per_epoch = max(30,len(lv23_training_loader))
+
+                # print('start training')
+                loss, loss_x, loss_u, avg_top1, avg_top5 = train(opts, lv23_training_loader, unlabel_loader, model,
+                                                                 train_criterion, optimizer, ema_optimizer, epoch, use_gpu)
+                print(
+                    'epoch {:03d}/{:03d} finished, loss: {:.3f}, loss_x: {:.3f}, loss_un: {:.3f}, avg_top1: {:.3f}%, avg_top5: {:.3f}%'.format(
+                        epoch, opts.epochs, loss, loss_x, loss_u, avg_top1, avg_top5))
+                # scheduler.step()
+
+                # print('start validation')
+                acc_top1, acc_top5 = validation(opts, validation_loader, ema_model, epoch, use_gpu)
+
+                is_best = acc_top1 > best_acc
+                best_acc = max(acc_top1, best_acc)
+                if is_best:
+                    print('model achieved the best accuracy ({:.3f}%) - saving best checkpoint...'.format(best_acc))
+                    if IS_ON_NSML:
+                        nsml.save(opts.name + '_best')
+                    else:
+                        torch.save(ema_model.state_dict(), os.path.join('runs', opts.name + '_best'))
+                if (epoch + 1) % opts.save_epoch == 0:
+                    if IS_ON_NSML:
+                        nsml.save(opts.name + '_e{}'.format(epoch))
+                    else:
+                        torch.save(ema_model.state_dict(), os.path.join('runs', opts.name + '_e{}'.format(epoch)))
+
+
+            print("LEVEL34 DATA LEARNING IS STARTED")
+            for epoch in range(301,401):
+
+                # if opts.steps_per_epoch < 0:
+                opts.steps_per_epoch = max(30,len(lv34_training_loader))
+
+                # print('start training')
+                loss, loss_x, loss_u, avg_top1, avg_top5 = train(opts, lv34_training_loader, unlabel_loader, model,
+                                                                 train_criterion, optimizer, ema_optimizer, epoch, use_gpu)
+                print(
+                    'epoch {:03d}/{:03d} finished, loss: {:.3f}, loss_x: {:.3f}, loss_un: {:.3f}, avg_top1: {:.3f}%, avg_top5: {:.3f}%'.format(
+                        epoch, opts.epochs, loss, loss_x, loss_u, avg_top1, avg_top5))
+                # scheduler.step()
+
+                # print('start validation')
+                acc_top1, acc_top5 = validation(opts, validation_loader, ema_model, epoch, use_gpu)
+
+                is_best = acc_top1 > best_acc
+                best_acc = max(acc_top1, best_acc)
+                if is_best:
+                    print('model achieved the best accuracy ({:.3f}%) - saving best checkpoint...'.format(best_acc))
+                    if IS_ON_NSML:
+                        nsml.save(opts.name + '_best')
+                    else:
+                        torch.save(ema_model.state_dict(), os.path.join('runs', opts.name + '_best'))
+                if (epoch + 1) % opts.save_epoch == 0:
+                    if IS_ON_NSML:
+                        nsml.save(opts.name + '_e{}'.format(epoch))
+                    else:
+                        torch.save(ema_model.state_dict(), os.path.join('runs', opts.name + '_e{}'.format(epoch)))
+
+            print("LEVEL4 DATA LEARNING IS STARTED")
+            for epoch in range(401, 501):
+
+                # if opts.steps_per_epoch < 0:
+                opts.steps_per_epoch = max(30, len(lv4_training_loader))
+
+                # print('start training')
+                loss, loss_x, loss_u, avg_top1, avg_top5 = train(opts, lv4_training_loader, unlabel_loader, model,
+                                                                 train_criterion, optimizer, ema_optimizer, epoch, use_gpu)
+                print(
+                    'epoch {:03d}/{:03d} finished, loss: {:.3f}, loss_x: {:.3f}, loss_un: {:.3f}, avg_top1: {:.3f}%, avg_top5: {:.3f}%'.format(
+                        epoch, opts.epochs, loss, loss_x, loss_u, avg_top1, avg_top5))
+                # scheduler.step()
+
+                # print('start validation')
+                acc_top1, acc_top5 = validation(opts, validation_loader, ema_model, epoch, use_gpu)
+
+                is_best = acc_top1 > best_acc
+                best_acc = max(acc_top1, best_acc)
+                if is_best:
+                    print('model achieved the best accuracy ({:.3f}%) - saving best checkpoint...'.format(best_acc))
+                    if IS_ON_NSML:
+                        nsml.save(opts.name + '_best')
+                    else:
+                        torch.save(ema_model.state_dict(), os.path.join('runs', opts.name + '_best'))
+                if (epoch + 1) % opts.save_epoch == 0:
+                    if IS_ON_NSML:
+                        nsml.save(opts.name + '_e{}'.format(epoch))
+                    else:
+                        torch.save(ema_model.state_dict(), os.path.join('runs', opts.name + '_e{}'.format(epoch)))
+
+            opts.start_epoch = opts.start_epoch + 500
+
+
+
+        for epoch in range(opts.start_epoch, opts.epochs + 1):
+        # for epoch in range(0,1):
             # print('start training')
-            loss, loss_x, loss_u, avg_top1, avg_top5 = train(opts, default_training_loader, unlabel_loader, model, train_criterion, optimizer, ema_optimizer, epoch, use_gpu)
+            loss, loss_x, loss_u, avg_top1, avg_top5 = train(opts, train_loader, unlabel_loader, model, train_criterion, optimizer, ema_optimizer, epoch, use_gpu)
             print('epoch {:03d}/{:03d} finished, loss: {:.3f}, loss_x: {:.3f}, loss_un: {:.3f}, avg_top1: {:.3f}%, avg_top5: {:.3f}%'.format(epoch, opts.epochs, loss, loss_x, loss_u, avg_top1, avg_top5))
             # scheduler.step()
 
             # print('start validation')
             acc_top1, acc_top5 = validation(opts, validation_loader, ema_model, epoch, use_gpu)
-
-            is_best = acc_top1 > best_acc
-            best_acc = max(acc_top1, best_acc)
-            if is_best:
-                print('model achieved the best accuracy ({:.3f}%) - saving best checkpoint...'.format(best_acc))
-                if IS_ON_NSML:
-                    nsml.save(opts.name + '_best')
-                else:
-                    torch.save(ema_model.state_dict(), os.path.join('runs', opts.name + '_best'))
-            if (epoch + 1) % opts.save_epoch == 0:
-                if IS_ON_NSML:
-                    nsml.save(opts.name + '_e{}'.format(epoch))
-                else:
-                    torch.save(ema_model.state_dict(), os.path.join('runs', opts.name + '_e{}'.format(epoch)))
-
-        print("EASY DATA LEARNING IS STARTED")
-        for epoch in range(51,151):
-
-            # if opts.steps_per_epoch < 0:
-            opts.steps_per_epoch = max(30,len(pesudo_easy_training_loader))
-
-            # print('start training')
-            loss, loss_x, loss_u, avg_top1, avg_top5 = train(opts, pesudo_easy_training_loader, unlabel_loader, model,
-                                                             train_criterion, optimizer, ema_optimizer, epoch, use_gpu)
-            print(
-                'epoch {:03d}/{:03d} finished, loss: {:.3f}, loss_x: {:.3f}, loss_un: {:.3f}, avg_top1: {:.3f}%, avg_top5: {:.3f}%'.format(
-                    epoch, opts.epochs, loss, loss_x, loss_u, avg_top1, avg_top5))
-            # scheduler.step()
-
-            # print('start validation')
-            acc_top1, acc_top5 = validation(opts, validation_loader, ema_model, epoch, use_gpu)
-
-            is_best = acc_top1 > best_acc
-            best_acc = max(acc_top1, best_acc)
-            if is_best:
-                print('model achieved the best accuracy ({:.3f}%) - saving best checkpoint...'.format(best_acc))
-                if IS_ON_NSML:
-                    nsml.save(opts.name + '_best')
-                else:
-                    torch.save(ema_model.state_dict(), os.path.join('runs', opts.name + '_best'))
-            if (epoch + 1) % opts.save_epoch == 0:
-                if IS_ON_NSML:
-                    nsml.save(opts.name + '_e{}'.format(epoch))
-                else:
-                    torch.save(ema_model.state_dict(), os.path.join('runs', opts.name + '_e{}'.format(epoch)))
-
-        print("MED DATA LEARNING IS STARTED")
-        for epoch in range(151,351):
-
-            # if opts.steps_per_epoch < 0:
-            opts.steps_per_epoch = max(30,len(pesudo_med_training_loader))
-
-            # print('start training')
-            loss, loss_x, loss_u, avg_top1, avg_top5 = train(opts, pesudo_med_training_loader, unlabel_loader, model,
-                                                             train_criterion, optimizer, ema_optimizer, epoch, use_gpu)
-            print(
-                'epoch {:03d}/{:03d} finished, loss: {:.3f}, loss_x: {:.3f}, loss_un: {:.3f}, avg_top1: {:.3f}%, avg_top5: {:.3f}%'.format(
-                    epoch, opts.epochs, loss, loss_x, loss_u, avg_top1, avg_top5))
-            # scheduler.step()
-
-            # print('start validation')
-            acc_top1, acc_top5 = validation(opts, validation_loader, ema_model, epoch, use_gpu)
-
-            is_best = acc_top1 > best_acc
-            best_acc = max(acc_top1, best_acc)
-            if is_best:
-                print('model achieved the best accuracy ({:.3f}%) - saving best checkpoint...'.format(best_acc))
-                if IS_ON_NSML:
-                    nsml.save(opts.name + '_best')
-                else:
-                    torch.save(ema_model.state_dict(), os.path.join('runs', opts.name + '_best'))
-            if (epoch + 1) % opts.save_epoch == 0:
-                if IS_ON_NSML:
-                    nsml.save(opts.name + '_e{}'.format(epoch))
-                else:
-                    torch.save(ema_model.state_dict(), os.path.join('runs', opts.name + '_e{}'.format(epoch)))
-
-
-        print("HARD DATA LEARNING IS STARTED")
-        for epoch in range(351,801):
-
-            # if opts.steps_per_epoch < 0:
-            opts.steps_per_epoch = max(30,len(pesudo_hard_training_loader))
-
-            # print('start training')
-            loss, loss_x, loss_u, avg_top1, avg_top5 = train(opts, pesudo_hard_training_loader, unlabel_loader, model,
-                                                             train_criterion, optimizer, ema_optimizer, epoch, use_gpu)
-            print(
-                'epoch {:03d}/{:03d} finished, loss: {:.3f}, loss_x: {:.3f}, loss_un: {:.3f}, avg_top1: {:.3f}%, avg_top5: {:.3f}%'.format(
-                    epoch, opts.epochs, loss, loss_x, loss_u, avg_top1, avg_top5))
-            # scheduler.step()
-
-            # print('start validation')
-            acc_top1, acc_top5 = validation(opts, validation_loader, ema_model, epoch, use_gpu)
-
             is_best = acc_top1 > best_acc
             best_acc = max(acc_top1, best_acc)
             if is_best:
