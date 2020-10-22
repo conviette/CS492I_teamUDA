@@ -70,3 +70,17 @@ class SimpleImageLoader(torch.utils.data.Dataset):
 
     def __len__(self):
         return len(self.imnames)
+
+    def getLabels(self):
+        return self.imclasses
+
+    def getFileNames(self):
+        return self.imnames
+
+    def flushData(self):
+        self.imnames = []
+        self.imclasses = []
+
+    def setNewData(self, imnames, imclasses):
+        self.imclasses = imclasses
+        self.imnames = imnames

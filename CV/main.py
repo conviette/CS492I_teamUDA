@@ -288,7 +288,8 @@ def main():
 
         # Set dataloader
         train_ids, val_ids, unl_ids = split_ids(os.path.join(DATASET_PATH, 'train/train_label'), 0.2)
-        print('found {} train, {} validation and {} unlabeled images'.format(len(train_ids), len(val_ids), len(unl_ids)))
+        print(
+            'found {} train, {} validation and {} unlabeled images'.format(len(train_ids), len(val_ids), len(unl_ids)))
         train_loader = torch.utils.data.DataLoader(
             SimpleImageLoader(DATASET_PATH, 'train', train_ids,
                               transform=transforms.Compose([
@@ -297,8 +298,8 @@ def main():
                                   transforms.RandomHorizontalFlip(),
                                   transforms.RandomVerticalFlip(),
                                   transforms.ToTensor(),
-                                  transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),])),
-                                batch_size=opts.batchsize, shuffle=True, num_workers=0, pin_memory=True, drop_last=True)
+                                  transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]), ])),
+            batch_size=opts.batchsize, shuffle=True, num_workers=0, pin_memory=True, drop_last=True)
         print('train_loader done')
 
         unlabel_loader = torch.utils.data.DataLoader(
@@ -323,6 +324,8 @@ def main():
                                batch_size=opts.batchsize, shuffle=False, num_workers=0, pin_memory=True, drop_last=False)
         print('validation_loader done')
 
+
+
         if opts.steps_per_epoch < 0:
             opts.steps_per_epoch = len(train_loader)
 
@@ -339,6 +342,7 @@ def main():
         # Train and Validation 
         best_acc = -1
         for epoch in range(opts.start_epoch, opts.epochs + 1):
+        # for epoch in range(0,1):
             # print('start training')
             loss, loss_x, loss_u, avg_top1, avg_top5 = train(opts, train_loader, unlabel_loader, model, train_criterion, optimizer, ema_optimizer, epoch, use_gpu)
             print('epoch {:03d}/{:03d} finished, loss: {:.3f}, loss_x: {:.3f}, loss_un: {:.3f}, avg_top1: {:.3f}%, avg_top5: {:.3f}%'.format(epoch, opts.epochs, loss, loss_x, loss_u, avg_top1, avg_top5))
@@ -359,6 +363,20 @@ def main():
                     nsml.save(opts.name + '_e{}'.format(epoch))
                 else:
                     torch.save(ema_model.state_dict(), os.path.join('runs', opts.name + '_e{}'.format(epoch)))
+
+
+        labels, preds = customPred(opts, validation_loader, model, epoch, use_gpu)
+
+        cons = 0
+        for idx in range(len(labels)):
+            if labels[idx] == preds[idx]:cons +=1
+
+        print (cons)
+
+        for idx in range (5):
+            print (labels[idx], preds[idx])
+
+
 
                 
 def train(opts, train_loader, unlabel_loader, model, criterion, optimizer, ema_optimizer, epoch, use_gpu):
@@ -495,7 +513,7 @@ def validation(opts, validation_loader, model, epoch, use_gpu):
     model.eval()
     avg_top1= 0.0
     avg_top5 = 0.0
-    nCnt =0 
+    nCnt =0
     with torch.no_grad():
         for batch_idx, data in enumerate(validation_loader):
             inputs, labels = data
@@ -509,16 +527,11 @@ def validation(opts, validation_loader, model, epoch, use_gpu):
             avg_top1 += acc_top1
             avg_top5 += acc_top5
 
-        avg_top1 = float(avg_top1/nCnt)   
-        avg_top5= float(avg_top5/nCnt)   
-    
+        avg_top1 = float(avg_top1/nCnt)
+        avg_top5= float(avg_top5/nCnt)
+
     if IS_ON_NSML:
         nsml.report(step=epoch, avg_top1=avg_top1, avg_top5=avg_top5)
 
     return avg_top1, avg_top5
-
-
-
-if __name__ == '__main__':
-    main()
 
