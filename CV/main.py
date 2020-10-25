@@ -250,7 +250,7 @@ parser.add_argument('--T', default=0.5, type=float)
 parser.add_argument('--masking', default=0.5, type=float, help='Threshold for confidence masking')
 parser.add_argument('--sharpening', default=0.4, type=float, help='Temperature for prediction sharpening')
 parser.add_argument('--useL2loss', default=False, type=bool, help='True for L2loss, false for KLDivLoss')
-parser.add_argument('--domain', default=True, type=bool, help='if True, use domain relevance filtering.')
+parser.add_argument('--domain', default=False, type=bool, help='if True, use domain relevance filtering.')
 
 # hyper-parameters for curriculum learning
 parser.add_argument('--curriculum', type=bool, default=False,  help='curriculum learning option, default is False')
