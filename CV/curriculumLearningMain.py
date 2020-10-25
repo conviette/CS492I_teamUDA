@@ -31,7 +31,7 @@ from models import Res18, Res50, Dense121, Res18_basic
 import nsml
 from nsml import DATASET_PATH, IS_ON_NSML
 
-from dataInfo import easyIdxList, medIdxList, hardIdxList, getTrData_specific_difficulty, pseudoAttatchedFileNMs, pseudoAttatchedLabels, pseudoEasyIdxs, pseudoMedIdxs
+# from dataInfo import easyIdxList, medIdxList, hardIdxList, getTrData_specific_difficulty, pseudoAttatchedFileNMs, pseudoAttatchedLabels, pseudoEasyIdxs, pseudoMedIdxs
 from dataInfo import level1names,level2names,level3names,level4names, level1classes,level2classes,level3classes,level4classes
 NUM_CLASSES = 265
 lmds = [0.3, 0.6, 1.0]
@@ -330,6 +330,18 @@ def main():
         lv23_training_loader = None
         lv34_training_loader = None
         lv4_training_loader = None
+        '''
+        curriculum learning 옵션이 켜진 경우에 한하여 
+        dataInfo.py 에 기록되어 있는 난이도별 파일명과 레이블을 이용하여 
+        training data loader 를 선언함 
+        
+        level 1 만 학습 - 100 epoch
+        level 1+2 학습 - 100 epoch
+        level 2+3 학습 - 100 epoch
+        level 3+4 학습 - 100 epoch
+        level 4 만 학습 - 100 epoch
+        
+        '''
         if opts.curriculum:
             opts.epochs = opts.epochs + 500
 

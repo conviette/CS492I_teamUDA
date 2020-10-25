@@ -372,6 +372,9 @@ def main():
 
             # print('start validation')
             acc_top1, acc_top5 = validation(opts, validation_loader, ema_model, epoch, use_gpu)
+            '''
+            특정 epoch 에서 unlabeled data의 label 을 predict하고 print 함 --> curriculum & pseudo label training 에 활용 
+            '''
             if epoch in [5, 10, 20, 30, 40, 60, 80, 100, 120, 140, 160, 180]:
                 customPred(opts, test_tr_loader, ema_model, epoch, use_gpu)
             is_best = acc_top1 > best_acc

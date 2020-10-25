@@ -365,7 +365,9 @@ def main():
                 else:
                     torch.save(ema_model.state_dict(), os.path.join('runs', opts.name + '_e{}'.format(epoch)))
 
-
+        '''
+        특정 epoch 에서 unlabeled data를 predict 하여 print 
+        '''
         labels, preds = customPred(opts, validation_loader, model, epoch, use_gpu)
 
         cons = 0
@@ -535,6 +537,7 @@ def validation(opts, validation_loader, model, epoch, use_gpu):
         nsml.report(step=epoch, avg_top1=avg_top1, avg_top5=avg_top5)
 
     return avg_top1, avg_top5
+
 
 
 def customPred(opts, validation_loader, model, epoch, use_gpu):
