@@ -23,8 +23,8 @@ class TransformRandom:
         self.base_trans = transform
         self.randaug = UDA_Trans
     def __call__(self, inp):
-        base_img = self.base_trans(inp)
-        uda_img = self.randaug(inp)
+        base_img = self.base_trans(inp) #give base image
+        uda_img = self.randaug(inp) #give randomly augmented image
         return base_img, uda_img
 
 class SimpleImageLoader(torch.utils.data.Dataset):
@@ -41,8 +41,9 @@ class SimpleImageLoader(torch.utils.data.Dataset):
         imnames = []
         imclasses = []
 
+        #Domain Relevance filtering
         if DomRel:
-            with open('domain_rel.json', 'r') as rf:
+            with open('domain_rel.json', 'r') as rf: #only load list of top 2/3 of unlabeled image by confidence of baseline model
                 fns = json.load(rf)
                 for fn in fns:
                     if os.path.exists(os.path.join(self.impath, fn)):
