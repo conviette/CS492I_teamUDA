@@ -29,6 +29,7 @@ from models import Res18, Res50, Dense121, Res18_basic
 
 import nsml
 from nsml import DATASET_PATH, IS_ON_NSML
+from dataInfo import pseudoData_imnames, pseudoData_imclasses
 
 NUM_CLASSES = 265
 
@@ -289,17 +290,38 @@ def main():
         # Set dataloader
         train_ids, val_ids, unl_ids = split_ids(os.path.join(DATASET_PATH, 'train/train_label'), 0.2)
         print('found {} train, {} validation and {} unlabeled images'.format(len(train_ids), len(val_ids), len(unl_ids)))
-        train_loader = torch.utils.data.DataLoader(
-            SimpleImageLoader(DATASET_PATH, 'train', train_ids,
+
+
+
+        loadedTrainData = SimpleImageLoader(DATASET_PATH, 'train', train_ids,
                               transform=transforms.Compose([
                                   transforms.Resize(opts.imResize),
                                   transforms.RandomResizedCrop(opts.imsize),
                                   transforms.RandomHorizontalFlip(),
                                   transforms.RandomVerticalFlip(),
                                   transforms.ToTensor(),
-                                  transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),])),
-                                batch_size=opts.batchsize, shuffle=True, num_workers=0, pin_memory=True, drop_last=True)
+                                  transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),]))
+
+        print ("original TR Data Size:",len(loadedTrainData.imnames))
+        loadedTrainData.imnames.extend(pseudoData_imnames)
+        loadedTrainData.imclasses.extend(pseudoData_imclasses)
+
+        print ("Pseudo Data extended TR Data Size:", len(loadedTrainData.imnames))
+        print ("Tr Data Info")
+        print ("FileNM list")
+        print (loadedTrainData.imnames)
+        print ("Classes list")
+        print (loadedTrainData.imclasses)
+
+
+        train_loader = torch.utils.data.DataLoader(
+            loadedTrainData, batch_size=opts.batchsize, shuffle=True, num_workers=0, pin_memory=True, drop_last=True)
         print('train_loader done')
+
+        test_tr_loader = torch.utils.data.DataLoader(
+            loadedTrainData, batch_size=opts.batchsize, shuffle=False, num_workers=0, pin_memory=True, drop_last=False)
+        # load training data as a validation form
+        print('test_tr_loader done')
 
         unlabel_loader = torch.utils.data.DataLoader(
             SimpleImageLoader(DATASET_PATH, 'unlabel', unl_ids,
@@ -323,8 +345,7 @@ def main():
                                batch_size=opts.batchsize, shuffle=False, num_workers=0, pin_memory=True, drop_last=False)
         print('validation_loader done')
 
-        print (train_loader.imnames[:5])
-        print (train_loader.imclasses[:5])
+
 
 
         if opts.steps_per_epoch < 0:
@@ -351,6 +372,11 @@ def main():
 
             # print('start validation')
             acc_top1, acc_top5 = validation(opts, validation_loader, ema_model, epoch, use_gpu)
+            '''
+            특정 epoch 에서 unlabeled data의 label 을 predict하고 print 함 --> curriculum & pseudo label training 에 활용 
+            '''
+            if epoch in [5, 10, 20, 30, 40, 60, 80, 100, 120, 140, 160, 180]:
+                customPred(opts, test_tr_loader, ema_model, epoch, use_gpu)
             is_best = acc_top1 > best_acc
             best_acc = max(acc_top1, best_acc)
             if is_best:
@@ -366,16 +392,16 @@ def main():
                     torch.save(ema_model.state_dict(), os.path.join('runs', opts.name + '_e{}'.format(epoch)))
 
 
-        labels, preds = customPred(opts, validation_loader, model, epoch, use_gpu)
+        # labels, preds = customPred(opts, validation_loader, model, epoch, use_gpu)
 
-        cons = 0
-        for idx in range(len(labels)):
-            if labels[idx] == preds[idx]:cons +=1
-
-        print (cons)
-
-        for idx in range (5):
-            print (labels[idx], preds[idx])
+        # cons = 0
+        # for idx in range(len(labels)):
+        #     if labels[idx] == preds[idx]:cons +=1
+        #
+        # print (cons)
+        #
+        # for idx in range (5):
+        #     print (labels[idx], preds[idx])
 
 
 
@@ -540,15 +566,37 @@ def validation(opts, validation_loader, model, epoch, use_gpu):
 def customPred(opts, validation_loader, model, epoch, use_gpu):
     model.eval()
     nCnt = 0
+
+    wholeLabels = []
+    wholePreds = []
+
     with torch.no_grad():
         for batch_idx, data in enumerate(validation_loader):
             inputs, labels = data
+
             if use_gpu:
                 inputs = inputs.cuda()
             nCnt += 1
             embed_fea, preds = model(inputs)
 
-    return labels.numpy(), preds.numpy()
+            wholeLabels.extend(list(labels.numpy()))
+            wholePreds.extend(np.argmax(preds.cpu().numpy(),axis=-1))
+    print("Original labels")
+    print (wholeLabels)
+    print("Pred. result")
+    print (wholePreds)
+
+    consensusIdxList = []
+    for idx, _ in enumerate(wholeLabels):
+        if wholeLabels[idx] == wholePreds[idx]:
+            consensusIdxList.append(idx)
+
+    print ("Identical Idx list")
+    print (consensusIdxList)
+
+
+
+    # return labels.numpy(), preds.numpy()
 
 
 if __name__ == '__main__':
