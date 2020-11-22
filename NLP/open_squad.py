@@ -130,7 +130,7 @@ def squad_convert_example_to_features(example, max_seq_length, doc_stride, max_q
 
     spans = []
 
-    truncated_query = tokenizer.encode(example.question_text, add_special_tokens=False, max_length=max_query_length)
+    truncated_query = tokenizer.encode(example.question_text, add_special_tokens=False, max_length=max_query_length, truncation=True)
     sequence_added_tokens = (
         tokenizer.max_len - tokenizer.max_len_single_sentence + 1
         if "roberta" in str(type(tokenizer))
@@ -148,7 +148,7 @@ def squad_convert_example_to_features(example, max_seq_length, doc_stride, max_q
             return_overflowing_tokens=True,
             pad_to_max_length=True,
             stride=max_seq_length - doc_stride - len(truncated_query) - sequence_pair_added_tokens,
-            truncation_strategy="only_second" if tokenizer.padding_side == "right" else "only_first",
+            truncation="only_second" if tokenizer.padding_side == "right" else "only_first",
         )
 
         paragraph_len = min(
@@ -314,7 +314,7 @@ def squad_convert_examples_to_features(
     if threads == 1:
         print("squad_convert_examples_to_features")
         features = []
-        for eg in tqdm(examples, total=len(examples), desc="convert squad examples to features"):
+        for eg in examples:
             feat = squad_convert_example_to_features_sp(
                 eg,
                 max_seq_length=max_seq_length,
@@ -334,18 +334,12 @@ def squad_convert_examples_to_features(
                 max_query_length=max_query_length,
                 is_training=is_training,
             )
-            features = list(
-                tqdm(
-                    p.imap(annotate_, examples, chunksize=32),
-                    total=len(examples),
-                    desc="convert squad examples to features",
-                )
-            )
+            features = list(p.imap(annotate_, examples, chunksize=32))
 
     new_features = []
     unique_id = 1000000000
     example_index = 0
-    for example_features in tqdm(features, total=len(features), desc="add example index and unique id"):
+    for example_features in features:
         if not example_features:
             continue
         for example_feature in example_features:
@@ -489,7 +483,7 @@ class SquadProcessor(DataProcessor):
             dataset = dataset["train"]
 
         examples = []
-        for tensor_dict in tqdm(dataset):
+        for tensor_dict in dataset:
             examples.append(self._get_example_from_tensor_dict(tensor_dict, evaluate=evaluate))
 
         return examples
@@ -542,7 +536,7 @@ class SquadProcessor(DataProcessor):
         examples = []
 
         has_answer_cnt, no_answer_cnt = 0, 0
-        for entry in tqdm(input_data[:]):
+        for entry in input_data[:]:
             qa = entry['qa']
             question_text = qa["question"]
             answer_text = qa['answer']

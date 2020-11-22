@@ -43,8 +43,15 @@ from transformers import (
     XLNetConfig,
     XLNetForQuestionAnswering,
     XLNetTokenizer,
+    ElectraConfig, #import electra
+    ElectraForQuestionAnswering,
+    ElectraTokenizer,
     get_linear_schedule_with_warmup,
+
 )
+
+from apex.optimizers import FusedLAMB
+
 from open_squad import squad_convert_examples_to_features
 
 '''
@@ -73,10 +80,7 @@ logger = logging.getLogger(__name__)
 handler = logging.StreamHandler(sys.stdout)
 logger.addHandler(handler)
 
-ALL_MODELS = sum(
-    (tuple(conf.pretrained_config_archive_map.keys()) for conf in (BertConfig, RobertaConfig, XLNetConfig, XLMConfig)),
-    (),
-)
+
 
 MODEL_CLASSES = {
     "bert": (BertConfig, BertForQuestionAnswering, BertTokenizer),
@@ -85,6 +89,7 @@ MODEL_CLASSES = {
     "xlm": (XLMConfig, XLMForQuestionAnswering, XLMTokenizer),
     "distilbert": (DistilBertConfig, DistilBertForQuestionAnswering, DistilBertTokenizer),
     "albert": (AlbertConfig, AlbertForQuestionAnswering, AlbertTokenizer),
+    "electra": (ElectraConfig, ElectraForQuestionAnswering, ElectraTokenizer), #add electra class
 }
 
 
@@ -165,7 +170,13 @@ def train(args, train_dataset, model, tokenizer):
         },
         {"params": [p for n, p in model.named_parameters() if any(nd in n for nd in no_decay)], "weight_decay": 0.0},
     ]
-    optimizer = AdamW(optimizer_grouped_parameters, lr=args.learning_rate, eps=args.adam_epsilon)
+
+
+    if args.use_lamb:
+        optimizer = FusedLAMB(optimizer_grouped_parameters, lr=args.learning_rate, eps=args.adam_epsilon) ##FusedlAMB optimizer
+    else:
+        optimizer = AdamW(optimizer_grouped_parameters, lr=args.learning_rate, eps=args.adam_epsilon, correct_bias=False)
+
     scheduler = get_linear_schedule_with_warmup(
         optimizer, num_warmup_steps=args.warmup_steps, num_training_steps=t_total
     )
@@ -197,18 +208,18 @@ def train(args, train_dataset, model, tokenizer):
         )
 
     # Train!
-    logger.info("***** Running training *****")
-    logger.info("  Num examples = %d", len(train_dataset))
-    logger.info("  Num Epochs = %d", args.num_train_epochs)
-    logger.info("  Instantaneous batch size per GPU = %d", args.per_gpu_train_batch_size)
-    logger.info(
+    print("***** Running training *****")
+    print("  Num examples = %d", len(train_dataset))
+    print("  Num Epochs = %d", args.num_train_epochs)
+    print("  Instantaneous batch size per GPU = %d", args.per_gpu_train_batch_size)
+    print(
         "  Total train batch size (w. parallel, distributed & accumulation) = %d",
         args.train_batch_size
         * args.gradient_accumulation_steps
         * (torch.distributed.get_world_size() if args.local_rank != -1 else 1),
     )
-    logger.info("  Gradient Accumulation steps = %d", args.gradient_accumulation_steps)
-    logger.info("  Total optimization steps = %d", t_total)
+    print("  Gradient Accumulation steps = %d", args.gradient_accumulation_steps)
+    print("  Total optimization steps = %d", t_total)
 
     global_step = 1
     epochs_trained = 0
@@ -240,7 +251,7 @@ def train(args, train_dataset, model, tokenizer):
     best_f1, best_exact = -1, -1
 
     for epoch in train_iterator:
-        epoch_iterator = tqdm(train_dataloader, desc="Iteration", disable=args.local_rank not in [-1, 0])
+        epoch_iterator = train_dataloader
         for step, batch in enumerate(epoch_iterator):
 
             # Skip past any already trained steps if resuming training
@@ -307,7 +318,7 @@ def train(args, train_dataset, model, tokenizer):
                         current_loss = (tr_loss - logging_loss) / args.logging_steps
                         logging_loss = tr_loss
 
-                        logger.info(
+                        print(
                             "best_f1_val = {}, f1_val = {}, exact_val = {}, loss = {}, global_step = {}, " \
                             .format(best_f1, _f1, _exact, current_loss, global_step))
                         if IS_ON_NSML:
@@ -375,14 +386,15 @@ def predict(args, model, tokenizer, prefix="", val_or_test="val"):
         model = torch.nn.DataParallel(model)
 
     # Eval!
-    logger.info("***** Running evaluation {} *****".format(prefix))
-    logger.info("  Num examples = %d", len(dataset))
-    logger.info("  Batch size = %d", args.eval_batch_size)
+    print("***** Running evaluation {} *****".format(prefix))
+    print("  Num examples = %d", len(dataset))
+    print("  Batch size = %d", args.eval_batch_size)
 
     all_results = []
     start_time = timeit.default_timer()
 
-    for batch in tqdm(eval_dataloader, desc="Evaluating"):
+    print('Evaluating...')
+    for batch in eval_dataloader:
         model.eval()
         batch = tuple(t.to(args.device) for t in batch)
 
@@ -435,7 +447,7 @@ def predict(args, model, tokenizer, prefix="", val_or_test="val"):
             all_results.append(result)
 
     evalTime = timeit.default_timer() - start_time
-    logger.info("  Evaluation done in total %f secs (%f sec per example)", evalTime, evalTime / len(dataset))
+    print("  Evaluation done in total %f secs (%f sec per example)", evalTime, evalTime / len(dataset))
 
     # Compute predictions
     output_prediction_file = os.path.join(args.output_dir, "predictions_{}.json".format(prefix))
@@ -508,7 +520,7 @@ def load_and_cache_examples(args, tokenizer, evaluate=False, output_examples=Fal
 
     # Init features and dataset from cache if it exists
     if os.path.exists(cached_features_file) and not args.overwrite_cache:
-        logger.info("Loading features from cached file %s", cached_features_file)
+        print("Loading features from cached file %s", cached_features_file)
         features_and_dataset = torch.load(cached_features_file)
         features, dataset, examples = (
             features_and_dataset["features"],
@@ -570,30 +582,27 @@ def main():
     # Required parameters
     parser.add_argument(
         "--model_type",
-        default=None,
+        default="electra",
         type=str,
-        required=True,
         help="Model type selected in the list: " + ", ".join(MODEL_CLASSES.keys()),
     )
     parser.add_argument(
         "--model_name_or_path",
-        default=None,
+        default="monologg/koelectra-base-v3-discriminator",
         type=str,
-        required=True,
-        help="Path to pre-trained model or shortcut name selected in the list: " + ", ".join(ALL_MODELS),
+        help="Path to pre-trained model or shortcut name selected in the list",
     )
     parser.add_argument(
         "--output_dir",
-        default=None,
+        default='output',
         type=str,
-        required=True,
         help="The output directory where the model checkpoints and predictions will be written.",
     )
 
     # Other parameters
     parser.add_argument(
         "--data_dir",
-        default=None,
+        default="train",
         type=str,
         help="The input data dir. Should contain the .json files for the task."
              + "If no data dir or train/predict files are specified, will run with tensorflow_datasets.",
@@ -613,11 +622,11 @@ def main():
              + "If no data dir or train/predict files are specified, will run with tensorflow_datasets.",
     )
     parser.add_argument(
-        "--config_name", default="", type=str, help="Pretrained config name or path if not the same as model_name"
+        "--config_name", default="monologg/koelectra-base-v3-discriminator", type=str, help="Pretrained config name or path if not the same as model_name"
     )
     parser.add_argument(
         "--tokenizer_name",
-        default="",
+        default="monologg/koelectra-base-v3-discriminator",
         type=str,
         help="Pretrained tokenizer name or path if not the same as model_name",
     )
@@ -630,6 +639,7 @@ def main():
 
     parser.add_argument(
         "--version_2_with_negative",
+        default=True,
         action="store_true",
         help="If true, the SQuAD examples contain some that do not have an answer.",
     )
@@ -660,8 +670,8 @@ def main():
         help="The maximum number of tokens for the question. Questions longer than this will "
              "be truncated to this length.",
     )
-    parser.add_argument("--do_train", action="store_true", help="Whether to run training.")
-    parser.add_argument("--do_eval", action="store_true", help="Whether to run eval on the dev set.")
+    parser.add_argument("--do_train", default=True, action="store_true", help="Whether to run training.")
+    parser.add_argument("--do_eval", default=True, action="store_true", help="Whether to run eval on the dev set.")
     parser.add_argument(
         "--evaluate_during_training", default=True,
         action="store_true", help="Run evaluation during training at each logging step."
@@ -670,10 +680,12 @@ def main():
         "--do_lower_case", action="store_true", help="Set this flag if you are using an uncased model."
     )
 
-    parser.add_argument("--per_gpu_train_batch_size", default=8, type=int, help="Batch size per GPU/CPU for training.")
+    parser.add_argument("--per_gpu_train_batch_size", default=24, type=int, help="Batch size per GPU/CPU for training.")
     parser.add_argument(
-        "--per_gpu_eval_batch_size", default=8, type=int, help="Batch size per GPU/CPU for evaluation."
+        "--per_gpu_eval_batch_size", default=24, type=int, help="Batch size per GPU/CPU for evaluation."
     )
+
+    parser.add_argument("--use_lamb", default=False, type=bool, help="use FusedLAMB instead of AdamW")
     parser.add_argument("--learning_rate", default=5e-5, type=float, help="The initial learning rate for Adam.")
     parser.add_argument(
         "--gradient_accumulation_steps",
@@ -709,6 +721,7 @@ def main():
     )
     parser.add_argument(
         "--verbose_logging",
+        default=False,
         action="store_true",
         help="If true, all of the warnings related to data processing will be printed. "
              "A number of warnings are expected for a normal SQuAD evaluation.",
@@ -789,6 +802,7 @@ def main():
         device = torch.device("cuda", args.local_rank)
         torch.distributed.init_process_group(backend="nccl")
         args.n_gpu = 1
+    print(args.n_gpu)
     args.device = device
 
     # Setup logging
@@ -809,7 +823,6 @@ def main():
 
     # Set seed
     set_seed(args)
-
     # Load pretrained model and tokenizer
     if args.local_rank not in [-1, 0]:
         # Make sure only the first process in distributed training will download model & vocab
@@ -821,6 +834,7 @@ def main():
         args.config_name if args.config_name else args.model_name_or_path,
         cache_dir=args.cache_dir if args.cache_dir else None,
     )
+
     tokenizer = tokenizer_class.from_pretrained(
         args.tokenizer_name if args.tokenizer_name else args.model_name_or_path,
         do_lower_case=args.do_lower_case,
@@ -832,7 +846,6 @@ def main():
         config=config,
         cache_dir=args.cache_dir if args.cache_dir else None,
     )
-
     if args.local_rank == 0:
         # Make sure only the first process in distributed training will download model & vocab
         torch.distributed.barrier()
