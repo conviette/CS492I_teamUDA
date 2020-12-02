@@ -532,13 +532,24 @@ class SquadProcessor(DataProcessor):
         return self._create_examples(input_data, "dev")
 
 
-    def _compute_document_score(self, sort_target, paragraph_list, sort_by_tfidf):
+    def _compute_document_score(self, sort_target, paragraph_list, sort_by_tfidf, tokenizer = None):
         from math import log
         sort_target_df_list = []
         sort_target_tflist_list = []
         document_length_list =[]
         document_length_average = 1
         paragraph_score_pairList = []
+
+
+        if tokenizer:
+            # Tokenizer
+            # input: raw string, "asdasdasd asdasd asda dasdas dqwasdasd"
+            # output: list of sequence, [1,2,41,2,6,1,2,3,1]
+            sort_target = tokenizer.tokenize(sort_target)
+        else:
+            # split raw string into white space separated list,
+            # "asdasdasd asdasd asda dasdas dqwasdasd" --> ["asdasdasd", "asdasd", "asda", "dasdas", "dqwasdasd"]
+            sort_target = sort_target.split(" ")
 
         # count TF, DF of sort_target & Document Length Average
         for targetToken in sort_target:
@@ -549,6 +560,12 @@ class SquadProcessor(DataProcessor):
             for paragraph in paragraph_list:
                 contextText = str(paragraph["contents"])
                 if contextText is None: continue
+
+                if tokenizer:
+                    # Tokenizer
+                    # input: raw string, "asdasdasd asdasd asda dasdas dqwasdasd"
+                    # output: list of sequence, [1,2,41,2,6,1,2,3,1]
+                    contextText = tokenizer.tokenize(contextText)
 
                 # check document length
                 document_length_list.append(len(contextText))
@@ -578,7 +595,7 @@ class SquadProcessor(DataProcessor):
                 b = 0.75 # default weight
 
                 for tk_idx, _ in enumerate(sort_target):
-                    idf = log(len(paragraph_list)/(sort_target_df_list[tk_idx]))
+                    idf = log(len(paragraph_list)/(1 + sort_target_df_list[tk_idx]))
                     tf = sort_target_tflist_list[tk_idx][doc_idx]
 
                     score += idf * (tf * (k+1)) / (tf + k*((1-b) + b*document_length_list[doc_idx]/document_length_average))
@@ -609,9 +626,9 @@ class SquadProcessor(DataProcessor):
             # start paragraph_sorting
             if paragraph_sort is not None:
 
-                sort_target = [answer_text]
+                sort_target = answer_text
                 if sort_by_query:
-                    sort_target = question_text.split(" ")
+                    sort_target = question_text
 
                 paragraph_score_list = self._compute_document_score(sort_target, paragraph_list, sort_by_tfidf)
 
