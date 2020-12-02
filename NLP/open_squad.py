@@ -592,7 +592,81 @@ class SquadProcessor(DataProcessor):
         return examples
 
 
-    def _create_examples(self, input_data, set_type):
+
+    def _compute_document_score(self, sort_target, paragraph_list, sort_by_tfidf, tokenizer = None):
+        from math import log
+        sort_target_df_list = []
+        sort_target_tflist_list = []
+        document_length_list =[]
+        document_length_average = 1
+        paragraph_score_pairList = []
+
+
+        if tokenizer:
+            # Tokenizer
+            # input: raw string, "asdasdasd asdasd asda dasdas dqwasdasd"
+            # output: list of sequence, [1,2,41,2,6,1,2,3,1]
+            sort_target = tokenizer.tokenize(sort_target)
+        else:
+            # split raw string into white space separated list,
+            # "asdasdasd asdasd asda dasdas dqwasdasd" --> ["asdasdasd", "asdasd", "asda", "dasdas", "dqwasdasd"]
+            sort_target = sort_target.split(" ")
+
+        # count TF, DF of sort_target & Document Length Average
+        for targetToken in sort_target:
+
+            document_occurence_buffer = 0
+            tflist_buffer = []
+
+            for paragraph in paragraph_list:
+                contextText = str(paragraph["contents"])
+                if contextText is None: continue
+
+                if tokenizer:
+                    # Tokenizer
+                    # input: raw string, "asdasdasd asdasd asda dasdas dqwasdasd"
+                    # output: list of sequence, [1,2,41,2,6,1,2,3,1]
+                    contextText = tokenizer.tokenize(contextText)
+
+                # check document length
+                document_length_list.append(len(contextText))
+                #count DF; if token in contextText --> +1
+                if targetToken in contextText: document_occurence_buffer += 1
+                #count TF
+                tflist_buffer.append(contextText.count(targetToken))
+
+            sort_target_df_list.append(document_occurence_buffer)
+            sort_target_tflist_list.append(tflist_buffer)
+
+        document_length_average = sum(document_length_list) / len(document_length_list)
+
+        for doc_idx, paragraph in enumerate(paragraph_list):
+
+            score = 0
+            if sort_by_tfidf:
+
+                for tk_idx, _ in enumerate(sort_target):
+                    idf = log(len(paragraph_list)/(1 + sort_target_df_list[tk_idx]))
+                    tf = sort_target_tflist_list[tk_idx][doc_idx]
+
+                    score += tf * idf
+
+            else: # bm25
+                k = 1.5 # default weight
+                b = 0.75 # default weight
+
+                for tk_idx, _ in enumerate(sort_target):
+                    idf = log(len(paragraph_list)/(1 + sort_target_df_list[tk_idx]))
+                    tf = sort_target_tflist_list[tk_idx][doc_idx]
+
+                    score += idf * (tf * (k+1)) / (tf + k*((1-b) + b*document_length_list[doc_idx]/document_length_average))
+
+            paragraph_score_pairList.append((paragraph, score))
+
+        return paragraph_score_pairList
+
+
+    def _create_examples(self, input_data, set_type, paragraph_sort = None, sort_by_tfidf = True ,sort_by_query=False):
         is_training = set_type == "train"
         examples = []
 
@@ -606,8 +680,24 @@ class SquadProcessor(DataProcessor):
 
             per_qa_paragraph_cnt = 0
             per_qa_unans_paragraph_cnt = 0
-            #entry["paragraphs"].sort(key=lambda x:x['relevance'], reverse=False)
-            for pi, paragraph in enumerate(entry["paragraphs"]):
+
+            paragraph_list = entry["paragraphs"]
+
+
+            # start paragraph_sorting
+            if paragraph_sort is not None:
+
+                sort_target = answer_text
+                if sort_by_query:
+                    sort_target = question_text
+
+                paragraph_score_list = self._compute_document_score(sort_target, paragraph_list, sort_by_tfidf)
+
+                paragraph_score_list = sorted(paragraph_score_list, key=lambda x:x[1], reverse=True)
+                paragraph_list = [paragraph_score_pair[0] for paragraph_score_pair in paragraph_score_list]
+
+
+            for pi, paragraph in enumerate(paragraph_list):
                 title = paragraph["title"]
                 context_text = str(paragraph["contents"])
                 if context_text is None:
