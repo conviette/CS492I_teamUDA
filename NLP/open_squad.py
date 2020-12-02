@@ -510,7 +510,7 @@ class SquadProcessor(DataProcessor):
             input_data = json.load(reader)["data"]
         return self._create_examples(input_data, "train")
 
-    def get_eval_examples(self, data_dir, filename=None):
+    def get_eval_examples(self, data_dir, filename=None, do_merge=False):
         """
         Returns the evaluation example from the data directory.
 
@@ -529,7 +529,68 @@ class SquadProcessor(DataProcessor):
                 os.path.join(data_dir, self.dev_file if filename is None else filename), "r", encoding="utf-8"
         ) as reader:
             input_data = json.load(reader)["data"]
+        if do_merge:
+            return self._create_examples_merged(input_data, "dev")
         return self._create_examples(input_data, "dev")
+
+    def _create_examples_merged(self, input_data, set_type):
+        is_training = set_type == "train"
+        examples = []
+
+        has_answer_cnt, no_answer_cnt = 0, 0
+        for entry in input_data[:]:
+            qa = entry['qa']
+            question_text = qa["question"]
+            answer_text = qa['answer']
+            if question_text is None or answer_text is None:
+                continue
+
+            per_qa_paragraph_cnt = 0
+            per_qa_unans_paragraph_cnt = 0
+
+            master_title = []
+            master_context = []
+            qas_id = "{}[SEP]{}[SEP]{}".format(question_text, answer_text, 0)
+            start_position_character = None
+            answers = []
+            #entry["paragraphs"].sort(key=lambda x:x['relevance'], reverse=True)
+            for pi, paragraph in enumerate(entry["paragraphs"]):
+                if str(paragraph["contents"]) is None:
+                    continue
+                master_title.append(paragraph["title"])
+                master_context.append(str(paragraph["contents"]))
+
+            context_text = ' '.join(master_context)
+            title = '[SEP]'.join(master_title)
+            if answer_text not in context_text:
+                is_impossible = True
+            else:
+                is_impossible = False
+
+            if not is_impossible:
+                answers = [{"text": answer_text,
+                            "answer_start": context_text.index(answer_text)}]
+
+            example = SquadExample(
+                qas_id=qas_id,
+                question_text=question_text,
+                context_text=context_text,
+                answer_text=answer_text,
+                start_position_character=start_position_character,
+                title=title,
+                is_impossible=is_impossible,
+                answers=answers,
+            )
+            if is_impossible:
+                no_answer_cnt += 1
+            else:
+                has_answer_cnt += 1
+
+            examples.append(example)
+
+        print("[{}] Has Answer({}) / No Answer({})".format(set_type, has_answer_cnt, no_answer_cnt))
+        return examples
+
 
     def _create_examples(self, input_data, set_type):
         is_training = set_type == "train"
@@ -545,6 +606,7 @@ class SquadProcessor(DataProcessor):
 
             per_qa_paragraph_cnt = 0
             per_qa_unans_paragraph_cnt = 0
+            #entry["paragraphs"].sort(key=lambda x:x['relevance'], reverse=False)
             for pi, paragraph in enumerate(entry["paragraphs"]):
                 title = paragraph["title"]
                 context_text = str(paragraph["contents"])
@@ -668,6 +730,8 @@ class SquadExample(object):
             self.end_position = char_to_word_offset[
                 min(start_position_character + len(answer_text) - 1, len(char_to_word_offset) - 1)
             ]
+    def __repr__(self):
+        return 'id:{}\nquestion:{}\ncontext:{}\ntitle:{}\n'.format(self.qas_id, self.question_text, self.context_text, self.title)
 
 
 class SquadFeatures(object):
@@ -726,6 +790,9 @@ class SquadFeatures(object):
 
         self.start_position = start_position
         self.end_position = end_position
+
+    def __repr__(self):
+        return 'example index:{}\nunique id:{}\n'.format(self.example_index, self.unique_id)
 
 
 class SquadResult(object):
