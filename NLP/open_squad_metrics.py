@@ -1,4 +1,4 @@
-""" 
+"""
 
 KorQuAD open 형 평가 스크립트
 
@@ -408,23 +408,99 @@ def _compute_softmax(scores):
     return probs
 
 
-def select_best_predictions(all_nbest_json):
+def compute_document_score(sort_target, paragraph_list):
+        from math import log
+        sort_target_df_list = []
+        sort_target_tflist_list = []
+        document_length_list =[]
+        document_length_average = 1
+        paragraph_score_pairList = []
+
+        sort_target = sort_target.split(" ")
+        # count TF, DF of sort_target & Document Length Average
+        for targetToken in sort_target:
+
+            document_occurence_buffer = 0
+            tflist_buffer = []
+
+            for contextText in paragraph_list:
+                if contextText is None: continue
+
+                # check document length
+                document_length_list.append(len(contextText))
+                #count DF; if token in contextText --> +1
+                if targetToken in contextText: document_occurence_buffer += 1
+                #count TF
+                tflist_buffer.append(contextText.count(targetToken))
+
+            sort_target_df_list.append(document_occurence_buffer)
+            sort_target_tflist_list.append(tflist_buffer)
+
+
+        document_length_average = sum(document_length_list) / len(document_length_list)
+
+        for doc_idx, paragraph in enumerate(paragraph_list):
+
+            score = 0
+
+            for tk_idx, _ in enumerate(sort_target):
+                idf = log(len(paragraph_list)/(1 + sort_target_df_list[tk_idx]))
+                tf = sort_target_tflist_list[tk_idx][doc_idx]
+
+                score += tf * idf
+
+            paragraph_score_pairList.append((paragraph, score))
+
+        return paragraph_score_pairList
+
+
+def select_best_predictions(all_nbest_json, all_contexts=None):
     # todo: How to select the best answer among different contexts.
     best_answer_max_prob = collections.OrderedDict()
     best_answer_predictions = collections.OrderedDict()
-    for qas_id, nbest_json in all_nbest_json.items():
-        qa_id_without_s = "[SEP]".join(qas_id.split("[SEP]")[:2])
-        text = nbest_json[0]["text"]
-        prob = nbest_json[0]["probability"]
 
-        if qa_id_without_s not in best_answer_max_prob:
-            best_answer_max_prob[qa_id_without_s] = prob
-            best_answer_predictions[qa_id_without_s] = text
-        else:
-            is_max_prob_updated = prob > best_answer_max_prob[qa_id_without_s]
-            if is_max_prob_updated:
+    ##only look at top 5 paragraphs according to tfidf score
+    if all_contexts:
+        context_cluster = collections.OrderedDict()
+        for qas_id, context in all_contexts.items(): #group contexts by qa entry
+            qa_id_without_s = "[SEP]".join(qas_id.split("[SEP]")[:2])
+            if qa_id_without_s not in context_cluster:
+                context_cluster[qa_id_without_s] = [[qas_id], [context]]
+            else:
+                context_cluster[qa_id_without_s][0].append(qas_id)
+                context_cluster[qa_id_without_s][1].append(context)
+        ranked = []
+        for qa in context_cluster: #find top 5 qas with tfdif
+            q = qa.split("[SEP]")[0]
+            pairlist = list(zip(context_cluster[qa][0], compute_document_score(q, context_cluster[qa][1])))
+            pairlist.sort(key=lambda x:x[1][1], reverse=True)
+            ranked.extend(list(map(lambda x:x[0], pairlist[:3])))
+        for qas_id in ranked:
+            nbest_json = all_nbest_json[qas_id]
+            qa_id_without_s = "[SEP]".join(qas_id.split("[SEP]")[:2])
+            text = nbest_json[0]["text"]
+            prob = nbest_json[0]["probability"]
+            if qa_id_without_s not in best_answer_max_prob:
                 best_answer_max_prob[qa_id_without_s] = prob
                 best_answer_predictions[qa_id_without_s] = text
+            else:
+                is_max_prob_updated = prob > best_answer_max_prob[qa_id_without_s]
+                if is_max_prob_updated:
+                    best_answer_max_prob[qa_id_without_s] = prob
+                    best_answer_predictions[qa_id_without_s] = text
+    else:
+        for qas_id, nbest_json in all_nbest_json.items():
+            qa_id_without_s = "[SEP]".join(qas_id.split("[SEP]")[:2])
+            text = nbest_json[0]["text"]
+            prob = nbest_json[0]["probability"]
+            if qa_id_without_s not in best_answer_max_prob:
+                best_answer_max_prob[qa_id_without_s] = prob
+                best_answer_predictions[qa_id_without_s] = text
+            else:
+                is_max_prob_updated = prob > best_answer_max_prob[qa_id_without_s]
+                if is_max_prob_updated:
+                    best_answer_max_prob[qa_id_without_s] = prob
+                    best_answer_predictions[qa_id_without_s] = text
     return best_answer_predictions
 
 
@@ -443,6 +519,7 @@ def compute_predictions_logits(
         null_score_diff_threshold,
         tokenizer,
         is_test=False,
+        cut=False
 ):
     """Write final predictions to the json file and log-odds of null if needed."""
     logger.info("Writing predictions to: %s" % (output_prediction_file))
@@ -463,6 +540,7 @@ def compute_predictions_logits(
     all_predictions = collections.OrderedDict()
     all_nbest_json = collections.OrderedDict()
     scores_diff_json = collections.OrderedDict()
+    all_contexts = collections.OrderedDict()
 
     for (example_index, example) in enumerate(all_examples):
         features = example_index_to_features[example_index]
@@ -621,6 +699,7 @@ def compute_predictions_logits(
             else:
                 all_predictions[example.qas_id] = best_non_null_entry.text
         all_nbest_json[example.qas_id] = nbest_json
+        all_contexts[example.qas_id] = example.context_text
 
     if not is_test:
         with open(output_prediction_file, "w") as writer:
@@ -637,7 +716,9 @@ def compute_predictions_logits(
 
     else:
         # todo: How to select the best answer among different contexts.
-        return select_best_predictions(all_nbest_json)
+        if not cut: #if all_contexts is None, look at all contexts. if not None, look at top 5 contexts.
+            all_contexts = None
+        return select_best_predictions(all_nbest_json, all_contexts=all_contexts)
 
 
 def compute_predictions_log_probs(
@@ -655,6 +736,7 @@ def compute_predictions_log_probs(
         tokenizer,
         verbose_logging,
         is_test=False,
+        cut=False
 ):
     """ XLNet write prediction logic (more complex than Bert's).
         Write final predictions to the json file and log-odds of null if needed.
@@ -683,10 +765,10 @@ def compute_predictions_log_probs(
     all_predictions = collections.OrderedDict()
     all_nbest_json = collections.OrderedDict()
     scores_diff_json = collections.OrderedDict()
+    all_contexts = collections.OrderedDict()
 
     for (example_index, example) in enumerate(all_examples):
         features = example_index_to_features[example_index]
-
         prelim_predictions = []
         # keep track of the minimum score of null start+end of position 0
         score_null = 1000000  # large and positive
@@ -817,6 +899,7 @@ def compute_predictions_log_probs(
         all_predictions[example.qas_id] = best_non_null_entry.text
 
         all_nbest_json[example.qas_id] = nbest_json
+        all_contexts[example.qas_id] = context_text
 
     if not is_test:
         with open(output_prediction_file, "w") as writer:
@@ -833,4 +916,6 @@ def compute_predictions_log_probs(
 
     else:
         # todo: How to select the best answer among different contexts.
-        return select_best_predictions(all_nbest_json)
+        if not cut: #if all_contexts is None, look at all contexts. if not None, look at top 5 contexts.
+            all_contexts = None
+        return select_best_predictions(all_nbest_json, all_contexts=all_contexts)

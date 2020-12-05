@@ -495,6 +495,7 @@ def predict(args, model, tokenizer, prefix="", val_or_test="val"):
             args.null_score_diff_threshold,
             tokenizer,
             is_test=is_test,
+            cut = args.test_cut
         )
 
     return examples, predictions
@@ -506,7 +507,7 @@ def load_and_cache_examples(args, tokenizer, evaluate=False, output_examples=Fal
         # and the others will use the cache.
         torch.distributed.barrier()
     # Load data features from cache or dataset file
-    input_dir = args.data_dir if args.data_dir else "."
+    input_dir = "." #args.data_dir if args.data_dir else
     if args.ans_select_strat=='merge' and val_or_test == 'test':
         merge_cache_dir = 'merge'
         do_merge = True
@@ -516,11 +517,11 @@ def load_and_cache_examples(args, tokenizer, evaluate=False, output_examples=Fal
 
     cached_features_file = os.path.join(
         input_dir,
-        "cached_{}_{}_{}{}".format(
+        "cached_{}_{}_{}{}{}".format(
             "dev" if evaluate else "train",
             list(filter(None, args.model_name_or_path.split("/"))).pop(),
             str(args.max_seq_length),
-            merge_cache_dir,
+            merge_cache_dir, args.sort_strat
         ),
     )
 
@@ -553,7 +554,11 @@ def load_and_cache_examples(args, tokenizer, evaluate=False, output_examples=Fal
                 filename = args.predict_file if val_or_test == "val" else "test_data/korquad_open_test.json"
                 examples = processor.get_eval_examples(args.data_dir, filename=filename, do_merge=do_merge)
             else:
-                examples = processor.get_train_examples(args.data_dir, filename=args.train_file)
+                if args.use_tokenizer:
+                    examples = processor.get_train_examples(args.data_dir, filename=args.train_file, query_type=args.query_type, sort_strat=args.sort_strat, tokenizer=tokenizer)
+                else:
+                    examples = processor.get_train_examples(args.data_dir, filename=args.train_file, sort_strat=args.sort_strat, tokenizer=None)
+
 
         print("Starting squad_convert_examples_to_features")
         features, dataset = squad_convert_examples_to_features(
@@ -568,9 +573,9 @@ def load_and_cache_examples(args, tokenizer, evaluate=False, output_examples=Fal
         )
         print("Complete squad_convert_examples_to_features")
 
-        # if args.local_rank in [-1, 0]:
-        #    logger.info("Saving features into cached file %s", cached_features_file)
-        #    torch.save({"features": features, "dataset": dataset, "examples": examples}, cached_features_file)
+        #if args.local_rank in [-1, 0]:
+            #print("Saving features into cached file %s", cached_features_file)
+            #torch.save({"features": features, "dataset": dataset, "examples": examples}, cached_features_file)
 
     if args.local_rank == 0 and not evaluate:
         # Make sure only the first process in distributed training process the dataset,
@@ -580,6 +585,8 @@ def load_and_cache_examples(args, tokenizer, evaluate=False, output_examples=Fal
     if output_examples:
         return dataset, examples, features
     return dataset
+
+
 
 
 def main():
@@ -703,7 +710,7 @@ def main():
     parser.add_argument("--adam_epsilon", default=1e-8, type=float, help="Epsilon for Adam optimizer.")
     parser.add_argument("--max_grad_norm", default=1.0, type=float, help="Max gradient norm.")
     parser.add_argument(
-        "--num_train_epochs", default=2.0, type=float, help="Total number of training epochs to perform."
+        "--num_train_epochs", default=1.0, type=float, help="Total number of training epochs to perform."
     )
     parser.add_argument(
         "--max_steps",
@@ -745,7 +752,7 @@ def main():
         "--overwrite_output_dir", default=True, action="store_true", help="Overwrite the content of the output directory"
     )
     parser.add_argument(
-        "--overwrite_cache", action="store_true", help="Overwrite the cached training and evaluation sets"
+        "--overwrite_cache", default=False, action="store_true", help="Overwrite the cached training and evaluation sets"
     )
     parser.add_argument("--seed", type=int, default=42, help="random seed for initialization")
 
@@ -763,7 +770,13 @@ def main():
              "See details at https://nvidia.github.io/apex/amp.html",
     )
 
-    parser.add_argument("--ans_select_strat", type=str, default="merge", help="merge, snorm or else(default)")
+    parser.add_argument("--ans_select_strat", type=str, default="", help="merge, snorm or else(default)")
+    parser.add_argument("--sort_strat", type=str, default="bm25", help="tfidf, bm25, or else(default)")
+    parser.add_argument("--query_type", type=str, default='', help="question, answer or else(default, question+answer)")
+    parser.add_argument("--test_cut", type=bool, default=False, help="if true, pick test answer from only top five contexts by tfidf.")
+    parser.add_argument("--use_tokenizer", type=bool, default=False, help="if true,use electra tokenizer for tfidf/bm25")
+
+
     parser.add_argument("--server_ip", type=str, default="", help="Can be used for distant debugging.")
     parser.add_argument("--server_port", type=str, default="", help="Can be used for distant debugging.")
 

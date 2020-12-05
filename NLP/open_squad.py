@@ -5,7 +5,7 @@ KorQuAD open 형 데이터 processor
 https://github.com/huggingface/transformers/blob/master/src/transformers/data/processors/squad.py
 
 """
-
+import time
 import json
 import logging
 import os
@@ -488,7 +488,7 @@ class SquadProcessor(DataProcessor):
 
         return examples
 
-    def get_train_examples(self, data_dir, filename=None):
+    def get_train_examples(self, data_dir, filename=None, sort_strat='', tokenizer = None, query_type=''):
         """
         Returns the training examples from the data directory.
 
@@ -508,9 +508,9 @@ class SquadProcessor(DataProcessor):
                 os.path.join(data_dir, self.train_file if filename is None else filename), "r", encoding="utf-8"
         ) as reader:
             input_data = json.load(reader)["data"]
-        return self._create_examples(input_data, "train")
+        return self._create_examples(input_data, "train", sort_strat = sort_strat, tokenizer=tokenizer, query_type=query_type)
 
-    def get_eval_examples(self, data_dir, filename=None, do_merge=False):
+    def get_eval_examples(self, data_dir, filename=None, do_merge=False,  tokenizer = None):
         """
         Returns the evaluation example from the data directory.
 
@@ -531,7 +531,7 @@ class SquadProcessor(DataProcessor):
             input_data = json.load(reader)["data"]
         if do_merge:
             return self._create_examples_merged(input_data, "dev")
-        return self._create_examples(input_data, "dev")
+        return self._create_examples(input_data, "dev", tokenizer=tokenizer)
 
     def _create_examples_merged(self, input_data, set_type):
         is_training = set_type == "train"
@@ -601,17 +601,15 @@ class SquadProcessor(DataProcessor):
         document_length_average = 1
         paragraph_score_pairList = []
 
-
         if tokenizer:
             # Tokenizer
             # input: raw string, "asdasdasd asdasd asda dasdas dqwasdasd"
             # output: list of sequence, [1,2,41,2,6,1,2,3,1]
-            sort_target = tokenizer.tokenize(sort_target)
+            sort_target = tokenizer(sort_target)['input_ids']
         else:
             # split raw string into white space separated list,
             # "asdasdasd asdasd asda dasdas dqwasdasd" --> ["asdasdasd", "asdasd", "asda", "dasdas", "dqwasdasd"]
             sort_target = sort_target.split(" ")
-
         # count TF, DF of sort_target & Document Length Average
         for targetToken in sort_target:
 
@@ -637,6 +635,7 @@ class SquadProcessor(DataProcessor):
 
             sort_target_df_list.append(document_occurence_buffer)
             sort_target_tflist_list.append(tflist_buffer)
+
 
         document_length_average = sum(document_length_list) / len(document_length_list)
 
@@ -666,12 +665,14 @@ class SquadProcessor(DataProcessor):
         return paragraph_score_pairList
 
 
-    def _create_examples(self, input_data, set_type, paragraph_sort = None, sort_by_tfidf = True ,sort_by_query=False):
+    def _create_examples(self, input_data, set_type, sort_strat='', query_type='', tokenizer = None):
         is_training = set_type == "train"
         examples = []
 
+
+        start_time = time.clock()
         has_answer_cnt, no_answer_cnt = 0, 0
-        for entry in input_data[:]:
+        for entry in tqdm(input_data[:]):
             qa = entry['qa']
             question_text = qa["question"]
             answer_text = qa['answer']
@@ -682,20 +683,22 @@ class SquadProcessor(DataProcessor):
             per_qa_unans_paragraph_cnt = 0
 
             paragraph_list = entry["paragraphs"]
-
+            if len(paragraph_list)==0:
+                continue
 
             # start paragraph_sorting
-            if paragraph_sort is not None:
-
-                sort_target = answer_text
-                if sort_by_query:
+            if sort_strat:
+                if query_type=='answer':
+                    sort_target = answer_text
+                elif query_type=='question':
                     sort_target = question_text
+                else:
+                    sort_target=answer_text+' '+question_text
 
-                paragraph_score_list = self._compute_document_score(sort_target, paragraph_list, sort_by_tfidf)
+                paragraph_score_list = self._compute_document_score(sort_target, paragraph_list, (sort_strat=='tfidf'), tokenizer=tokenizer)
 
                 paragraph_score_list = sorted(paragraph_score_list, key=lambda x:x[1], reverse=True)
                 paragraph_list = [paragraph_score_pair[0] for paragraph_score_pair in paragraph_score_list]
-
 
             for pi, paragraph in enumerate(paragraph_list):
                 title = paragraph["title"]
@@ -729,10 +732,7 @@ class SquadProcessor(DataProcessor):
                     answers=answers,
                 )
                 if is_impossible:
-                    no_answer_cnt += 1
                     per_qa_unans_paragraph_cnt += 1
-                else:
-                    has_answer_cnt += 1
 
                 if is_impossible and per_qa_unans_paragraph_cnt > 3:
                     continue
@@ -741,9 +741,13 @@ class SquadProcessor(DataProcessor):
                 per_qa_paragraph_cnt += 1
                 if is_training and per_qa_paragraph_cnt > 3:
                     break
-
+                if is_impossible:
+                    no_answer_cnt +=1
+                else:
+                    has_answer_cnt += 1
                 examples.append(example)
 
+        print(time.clock() - start_time, "seconds")
         print("[{}] Has Answer({}) / No Answer({})".format(set_type, has_answer_cnt, no_answer_cnt))
         return examples
 

@@ -155,26 +155,30 @@ def load_and_cache_examples(args, tokenizer, evaluate=False, output_examples=Fal
         # and the others will use the cache.
         torch.distributed.barrier()
     # Load data features from cache or dataset file
-    input_dir = args.data_dir if args.data_dir else "."
+    input_dir = "."
     if args.ans_select_strat=='merge' and val_or_test == 'test':
         merge_cache_dir = 'merge'
         do_merge = True
     else:
         merge_cache_dir = ''
         do_merge = False
+    token_dir = 'tk'
+
+
 
     cached_features_file = os.path.join(
         input_dir,
-        "cached_{}_{}_{}{}".format(
+        "cached_{}_{}_{}{}{}{}".format(
             "dev" if evaluate else "train",
             list(filter(None, args.model_name_or_path.split("/"))).pop(),
             str(args.max_seq_length),
-            merge_cache_dir,
+            merge_cache_dir, args.sort_strat, token_dir
         ),
     )
+    print(cached_features_file)
 
     # Init features and dataset from cache if it exists
-    if os.path.exists(cached_features_file) and not args.overwrite_cache:
+    try:
         print("Loading features from cached file %s", cached_features_file)
         features_and_dataset = torch.load(cached_features_file)
         features, dataset, examples = (
@@ -182,8 +186,8 @@ def load_and_cache_examples(args, tokenizer, evaluate=False, output_examples=Fal
             features_and_dataset["dataset"],
             features_and_dataset["examples"],
         )
-    else:
-        logger.info("Creating features from dataset file at %s", input_dir)
+    except:
+        logger.info("Creating features from dataset file at %s", args.data_dir)
 
         if not args.data_dir and ((evaluate and not args.predict_file) or (not evaluate and not args.train_file)):
             try:
@@ -202,7 +206,7 @@ def load_and_cache_examples(args, tokenizer, evaluate=False, output_examples=Fal
                 filename = args.predict_file if val_or_test == "val" else "test_data/korquad_open_test.json"
                 examples = processor.get_eval_examples(args.data_dir, filename=filename, do_merge=do_merge)
             else:
-                examples = processor.get_train_examples(args.data_dir, filename=args.train_file)
+                examples = processor.get_train_examples(args.data_dir, filename=args.train_file, sort_strat=args.sort_strat, tokenizer=None)
 
         print("Starting squad_convert_examples_to_features")
         features, dataset = squad_convert_examples_to_features(
@@ -217,9 +221,9 @@ def load_and_cache_examples(args, tokenizer, evaluate=False, output_examples=Fal
         )
         print("Complete squad_convert_examples_to_features")
 
-        # if args.local_rank in [-1, 0]:
-        #    logger.info("Saving features into cached file %s", cached_features_file)
-        #    torch.save({"features": features, "dataset": dataset, "examples": examples}, cached_features_file)
+        if args.local_rank in [-1, 0]:
+            print("Saving features into cached file %s", cached_features_file)
+            torch.save({"features": features, "dataset": dataset, "examples": examples}, cached_features_file)
 
     if args.local_rank == 0 and not evaluate:
         # Make sure only the first process in distributed training process the dataset,
@@ -233,6 +237,8 @@ def load_and_cache_examples(args, tokenizer, evaluate=False, output_examples=Fal
 
 def main():
     parser = argparse.ArgumentParser()
+    import os
+    print(os.getcwd())
 
     # Required parameters
     parser.add_argument(
@@ -412,7 +418,10 @@ def main():
              "See details at https://nvidia.github.io/apex/amp.html",
     )
 
-    parser.add_argument("--ans_select_strat", type=str, default="merge", help="merge, snorm or else(default)")
+    parser.add_argument("--ans_select_strat", type=str, default="", help="merge, snorm or else(default)")
+    parser.add_argument("--sort_strat", type=str, default="", help="tfidf, bm25, or else(default)")
+
+
     parser.add_argument("--server_ip", type=str, default="", help="Can be used for distant debugging.")
     parser.add_argument("--server_port", type=str, default="", help="Can be used for distant debugging.")
 
@@ -502,9 +511,10 @@ def main():
         # Make sure only the first process in distributed training will download model & vocab
         torch.distributed.barrier()
 
-    
+
 
     train_dataset = load_and_cache_examples(args, tokenizer, evaluate=False, output_examples=False)
+
 
 if __name__ == "__main__":
     main()
