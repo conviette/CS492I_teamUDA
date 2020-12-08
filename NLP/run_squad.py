@@ -495,7 +495,8 @@ def predict(args, model, tokenizer, prefix="", val_or_test="val"):
             args.null_score_diff_threshold,
             tokenizer,
             is_test=is_test,
-            cut = args.test_cut
+            cut = args.test_cut,
+            cut_num=args.cut_num,
         )
 
     return examples, predictions
@@ -773,7 +774,8 @@ def main():
     parser.add_argument("--ans_select_strat", type=str, default="", help="merge, snorm or else(default)")
     parser.add_argument("--sort_strat", type=str, default="bm25", help="tfidf, bm25, or else(default)")
     parser.add_argument("--query_type", type=str, default='', help="question, answer or else(default, question+answer)")
-    parser.add_argument("--test_cut", type=bool, default=False, help="if true, pick test answer from only top five contexts by tfidf.")
+    parser.add_argument("--test_cut", type=bool, default=True, help="if true, pick test answer from only top five contexts by tfidf.")
+    parser.add_argument("--cut_num", type=int, default=1, help="number of test contexts to consider (only for test_cut=True)")
     parser.add_argument("--use_tokenizer", type=bool, default=False, help="if true,use electra tokenizer for tfidf/bm25")
 
 

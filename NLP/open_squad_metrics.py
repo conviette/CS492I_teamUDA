@@ -454,7 +454,7 @@ def compute_document_score(sort_target, paragraph_list):
         return paragraph_score_pairList
 
 
-def select_best_predictions(all_nbest_json, all_contexts=None):
+def select_best_predictions(all_nbest_json, all_contexts=None, cut_num):
     # todo: How to select the best answer among different contexts.
     best_answer_max_prob = collections.OrderedDict()
     best_answer_predictions = collections.OrderedDict()
@@ -474,7 +474,7 @@ def select_best_predictions(all_nbest_json, all_contexts=None):
             q = qa.split("[SEP]")[0]
             pairlist = list(zip(context_cluster[qa][0], compute_document_score(q, context_cluster[qa][1])))
             pairlist.sort(key=lambda x:x[1][1], reverse=True)
-            ranked.extend(list(map(lambda x:x[0], pairlist[:3])))
+            ranked.extend(list(map(lambda x:x[0], pairlist[:cut_num])))
         for qas_id in ranked:
             nbest_json = all_nbest_json[qas_id]
             qa_id_without_s = "[SEP]".join(qas_id.split("[SEP]")[:2])
@@ -519,7 +519,8 @@ def compute_predictions_logits(
         null_score_diff_threshold,
         tokenizer,
         is_test=False,
-        cut=False
+        cut=False,
+        cut_num=5
 ):
     """Write final predictions to the json file and log-odds of null if needed."""
     logger.info("Writing predictions to: %s" % (output_prediction_file))
@@ -718,7 +719,7 @@ def compute_predictions_logits(
         # todo: How to select the best answer among different contexts.
         if not cut: #if all_contexts is None, look at all contexts. if not None, look at top 5 contexts.
             all_contexts = None
-        return select_best_predictions(all_nbest_json, all_contexts=all_contexts)
+        return select_best_predictions(all_nbest_json, all_contexts=all_contexts, cut_num=5)
 
 
 def compute_predictions_log_probs(
@@ -736,7 +737,8 @@ def compute_predictions_log_probs(
         tokenizer,
         verbose_logging,
         is_test=False,
-        cut=False
+        cut=False,
+        cut_num=5,
 ):
     """ XLNet write prediction logic (more complex than Bert's).
         Write final predictions to the json file and log-odds of null if needed.
@@ -918,4 +920,4 @@ def compute_predictions_log_probs(
         # todo: How to select the best answer among different contexts.
         if not cut: #if all_contexts is None, look at all contexts. if not None, look at top 5 contexts.
             all_contexts = None
-        return select_best_predictions(all_nbest_json, all_contexts=all_contexts)
+        return select_best_predictions(all_nbest_json, all_contexts=all_contexts, cut_num=5)
