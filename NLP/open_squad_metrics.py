@@ -408,7 +408,7 @@ def _compute_softmax(scores):
     return probs
 
 
-def compute_document_score(sort_target, paragraph_list):
+def compute_document_score(sort_target, paragraph_list): #compute context tfidf score and rank
         from math import log
         sort_target_df_list = []
         sort_target_tflist_list = []
@@ -470,11 +470,12 @@ def select_best_predictions(all_nbest_json, all_contexts=None, cut_num):
                 context_cluster[qa_id_without_s][0].append(qas_id)
                 context_cluster[qa_id_without_s][1].append(context)
         ranked = []
-        for qa in context_cluster: #find top 5 qas with tfdif
+        for qa in context_cluster: #find top n=cut_num qas with tfdif
             q = qa.split("[SEP]")[0]
             pairlist = list(zip(context_cluster[qa][0], compute_document_score(q, context_cluster[qa][1])))
             pairlist.sort(key=lambda x:x[1][1], reverse=True)
             ranked.extend(list(map(lambda x:x[0], pairlist[:cut_num])))
+        #pick best answer from top contexts
         for qas_id in ranked:
             nbest_json = all_nbest_json[qas_id]
             qa_id_without_s = "[SEP]".join(qas_id.split("[SEP]")[:2])
