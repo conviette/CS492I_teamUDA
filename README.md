@@ -1,8 +1,17 @@
 
 # CS492I_teamUDA
 
-## CV task
+This repository contains the code for the 2020 Fall CS492I course, <Deep Learning for Real-World Problems>. This code improves on the provided baseline code for one CV task and one NLP task.
 
+## CV task
+* Task: Image Classification (Shopping Mall Dataset)
+* The original baseline code is a basic classification model that uses resnet.
+* We make three improvements to this baseline code:
+  * Unsupervised Data Augmentation
+  * Curriculum Learning
+  * Pseudo-labeling
+
+### Code Details
 * Run main.py without any parameter changes to obtain our current standing best result.
 * New Hyperparameters
 	* masking: threshold beta for confidence-based masking.
@@ -13,6 +22,14 @@
 * The best model is stored at kaist0012/fashion_dataset/148/Res18baseMM_best.
 
 ## NLP task
+* Task: KorQUAD (Question Answering Dataset)
+* The original baseline code is a basic QA model that uses BERT.
+* We make three improvements to this baseline code:
+  * Using KoELECTRA instead of BERT
+  * Using tf-idf and bm25 for better context selection
+  * Using bm25 to rank answers for better answer selection
+
+### Code Details
 * Run run_squad.py without any parameter changes to obtain our best model.
 * New Hyperparameters
 	* sort_strat: Sorting measure for training context selection. Use "tfidf" and "bm25" for respective values, and any other string for the baseline.
